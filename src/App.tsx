@@ -1,99 +1,120 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Link, Route, Routes } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { ApiError, authApi, Dashboard, Language, workerApi } from "./api";
 
-// Replace these three URLs with approved local/desi photos when the final assets are ready.
-const photos = {
-  hero: "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1800&q=80",
-  worker: "https://images.unsplash.com/photo-1521791055366-0d553872125f?auto=format&fit=crop&w=900&q=80",
-  community: "https://images.unsplash.com/photo-1556761175-b413da4baf72?auto=format&fit=crop&w=900&q=80",
-};
+const labels = {
+  hi: {
+    home: "मुख्य पृष्ठ", how: "यह कैसे काम करता है", workers: "श्रमिकों के लिए", orgs: "संस्थाओं के लिए", safety: "सुरक्षा", about: "हमारे बारे में", join: "पायलट से जुड़ें",
+    login: "श्रमिक लॉगिन", phone: "मोबाइल नंबर", sendOtp: "OTP भेजें", otp: "OTP डालें", verify: "सत्यापित करें", demo: "डेमो OTP: 123456", dashboard: "मेरा डैशबोर्ड", wages: "मजदूरी", checkin: "सुरक्षा जांच", complaint: "समस्या बताएं", cases: "मेरे मामले", logout: "लॉग आउट", confirmLogout: "क्या आप लॉग आउट करना चाहते हैं?",
+    promised: "वादा की गई रकम", received: "मिली रकम", date: "तारीख", note: "काम/नियोक्ता का नोट", save: "सहेजें", safe: "मैं सुरक्षित हूं", help: "मुझे मदद चाहिए", summary: "समस्या का विवरण", type: "समस्या का प्रकार", submit: "भेजें", loading: "लोड हो रहा है...", retry: "फिर कोशिश करें", offline: "आप ऑफलाइन दिख रहे हैं। कनेक्शन आने पर यह काम अपने आप दोबारा कोशिश होगा।", error: "जानकारी लोड नहीं हो सकी। कृपया कनेक्शन जांचकर फिर कोशिश करें।", pending: "भेजने की कतार में", noData: "अभी कोई जानकारी नहीं है।",
+  },
+  en: {
+    home: "Home", how: "How It Works", workers: "For Workers", orgs: "For Organizations", safety: "Safety", about: "About", join: "Join the Pilot",
+    login: "Worker login", phone: "Mobile number", sendOtp: "Send OTP", otp: "Enter OTP", verify: "Verify", demo: "Demo OTP: 123456", dashboard: "My dashboard", wages: "Wages", checkin: "Safety check-in", complaint: "Report a problem", cases: "My cases", logout: "Log out", confirmLogout: "Do you want to log out?",
+    promised: "Promised amount", received: "Received amount", date: "Date", note: "Employer/site note", save: "Save", safe: "I'm safe", help: "I need help", summary: "Problem summary", type: "Problem type", submit: "Submit", loading: "Loading...", retry: "Try again", offline: "You appear to be offline. This will retry automatically when your connection returns.", error: "Could not load your information. Please check your connection and try again.", pending: "Queued to send", noData: "Nothing here yet.",
+  },
+} as const;
 
-const hi = {
-  join: "पायलट से जुड़ें",
-  nav: ["यह कैसे काम करता है", "श्रमिकों के लिए", "संस्थाओं के लिए", "सुरक्षा", "हमारे बारे में"],
-  heroEyebrow: "सुरक्षित भविष्य की शुरुआत अपनी बात कहने से होती है",
-  tagline: "हर श्रमिक सुरक्षित कल का हकदार है",
-  intro: "पहचान प्रवासी श्रमिकों को अपनी मजदूरी सुरक्षित रखने, असुरक्षित परिस्थितियों की सूचना देने और भरोसेमंद सहायता से जुड़ने में मदद करता है — निजी और सुरक्षित तरीके से।",
-  learn: "जानें, यह कैसे काम करता है",
-  private: "डिफ़ॉल्ट रूप से निजी।",
-  consent: "आपकी अनुमति के बिना कुछ साझा नहीं किया जाता।",
-  reality: "हकीकत",
-  realityTitle: "मेहनत पूरी, सुरक्षा अधूरी।",
-  realityBody: "श्रमिक हमारे शहरों को चलाने में बड़ी भूमिका निभाते हैं। पहचान रिकॉर्ड रखने, सहायता मांगने और सम्मान के साथ आगे बढ़ने को आसान बनाता है।",
-  cards: [
-    ["मजदूरी जो कभी नहीं मिलती", "काम पूरा हो जाता है, लेकिन भुगतान देर से मिलता है, कम मिलता है या मिलता ही नहीं।"],
-    ["काम की शर्तें साफ नहीं होतीं", "समय, दर और शर्तें अक्सर मौखिक होती हैं, इसलिए श्रमिक के पास प्रमाण कम रह जाता है।"],
-    ["असुरक्षित कार्यस्थल", "सुरक्षा उपकरणों की कमी, ऊंचाई पर असुरक्षित काम और लंबे समय की शिफ्ट जोखिम बढ़ाती हैं।"],
-  ],
-  simple: "सरल सोच के साथ",
-  recordTitle: "एक रिकॉर्ड, जो आपके साथ रहे।",
-  recordBody: "नई जगह काम शुरू करने से लेकर भरोसेमंद संस्था से बात करने तक, आपकी जरूरी जानकारी एक सुरक्षित जगह पर व्यवस्थित रहती है।",
-  workerLink: "श्रमिक सहायता देखें →",
-  how: "यह कैसे काम करता है",
-  stepsTitle: "चार कदम। अधिक भरोसा।",
-  steps: ["निजी प्रोफाइल बनाएं", "मजदूरी और परिस्थितियां दर्ज करें", "सुरक्षित तरीके से समस्या बताएं", "भरोसेमंद सहायता से जुड़ें"],
-  stepBody: "साफ, सरल और रोजमर्रा के मोबाइल के लिए बनाया गया।",
-  support: "आपकी वास्तविक जरूरतों को समझने वाली सहायता।",
-  joinPilot: "पायलट में शामिल हों →",
-  footerTagline: "हर श्रमिक सुरक्षित कल का हकदार है।",
-};
+const publicPhotos = { hero: "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1800&q=80", worker: "https://images.unsplash.com/photo-1521791055366-0d553872125f?auto=format&fit=crop&w=900&q=80" };
+const sessionKey = "pehchaan-worker-session";
+type Session = { token: string; workerId: string; expiresAt: number };
+type QueueItem = { id: string; kind: "checkin" | "case"; body: Record<string, unknown> };
 
-const pageContent = {
-  "/how-it-works": ["पहचान का तरीका", "चिंता से सहायता तक एक साफ रास्ता।", "पहचान श्रमिक की यात्रा के छोटे लेकिन जरूरी पलों को एक निजी और सरल जगह पर लाता है।", ["कुछ कदमों में निजी श्रमिक प्रोफाइल बनाएं।", "वादा की गई और मिली मजदूरी दर्ज करें।", "अपनी पसंद के अनुसार समस्या की जानकारी दें।", "भरोसेमंद NGO या सहायता संस्था से जुड़ें।"], photos.community],
-  "/for-workers": ["श्रमिकों के लिए", "आपका काम। आपका रिकॉर्ड। आपके अधिकार।", "सरल मोबाइल इंटरफेस, बड़े बटन, क्षेत्रीय भाषा की सहायता और रोजमर्रा की जरूरतों के लिए बनाया गया सुरक्षित मंच।", ["बड़े बटन और कम कदम, सामान्य स्मार्टफोन के लिए।", "आपकी अनुमति के बिना रिकॉर्ड साझा नहीं किया जाता।", "मजदूरी, सुरक्षा जांच, शिकायत और सहायता एक ही जगह।"], photos.worker],
-  "/for-organizations": ["संस्थाओं के लिए", "हर मामले को अगले साफ कदम में बदलें।", "NGO और सामाजिक संस्थाएं श्रमिकों के मामले संभाल सकती हैं, सहायता सौंप सकती हैं और जरूरी प्रमाण सुरक्षित रख सकती हैं।", ["श्रमिकों के मामले संभालें और केसवर्कर नियुक्त करें।", "शिकायत की स्थिति और प्रतिक्रिया का समय देखें।", "प्रमाण सुरक्षित रखें और पहचान छिपाकर रिपोर्ट बनाएं।"], photos.community],
-  "/safety": ["सुरक्षा और भरोसा", "पहचान लोगों को उजागर नहीं, सुरक्षित रखता है।", "पहचान आपातकालीन सेवाओं, पुलिस, अदालत या श्रम विभाग की जगह नहीं लेता। यह श्रमिकों और भरोसेमंद संस्थाओं को जानकारी व्यवस्थित करने और सहायता तक पहुंचने में मदद करता है।", ["निजता को प्राथमिकता और सहमति से जानकारी साझा करना।", "सुरक्षित प्रमाण भंडारण और भूमिका-आधारित पहुंच।", "श्रमिक की पहचान सार्वजनिक रूप से साझा नहीं की जाती।", "ज्यादा जोखिम वाले मामलों में मानवीय सहायता।"], photos.hero],
-  "/about": ["पहचान के बारे में", "सम्मान हर कामकाजी दिन का हिस्सा होना चाहिए।", "पहचान प्रवासी और असंगठित श्रमिकों, NGO, जिम्मेदार नियोक्ताओं और सुरक्षित काम के लिए साथ आने वाले सहयोगियों के लिए है।", ["सहायता प्राप्त श्रमिक — पायलट के बाद अपडेट होगा।", "दर्ज किए गए मामले — पायलट के बाद अपडेट होगा।", "NGO सहयोगी — पायलट के बाद अपडेट होगा।", "समर्थित भाषाएं — पायलट के बाद अपडेट होगा।"], photos.community],
-};
-
-function Navbar({ english, setEnglish }: { english: boolean; setEnglish: (value: boolean) => void }) {
-  const labels = english ? ["How It Works", "For Workers", "For Organizations", "Safety", "About"] : hi.nav;
-  return <header className="navbar">
-    <Link className="brand" to="/">Pehchaan<span>.</span></Link>
-    <nav>{["/how-it-works", "/for-workers", "/for-organizations", "/safety", "/about"].map((path, i) => <Link key={path} to={path}>{labels[i]}</Link>)}</nav>
-    <div className="nav-actions"><button className="language" onClick={() => setEnglish(!english)}>{english ? "हिंदी" : "EN"} <span>↔</span></button><Link className="button button-small" to="/join">{english ? "Join the Pilot" : hi.join}</Link></div>
-  </header>;
+function getSession(): Session | null {
+  try {
+    const session = JSON.parse(localStorage.getItem(sessionKey) || "null") as Session | null;
+    return session && session.expiresAt > Date.now() ? session : null;
+  } catch { return null; }
 }
 
-function Footer() {
-  return <footer><div><Link className="brand" to="/">Pehchaan<span>.</span></Link><p>{hi.footerTagline}</p></div><div className="footer-links"><Link to="/about">हमारे बारे में</Link><Link to="/safety">निजता और सुरक्षा</Link><Link to="/join">संपर्क</Link><span>Instagram · LinkedIn</span></div></footer>;
+function isOffline(error: unknown) { return Boolean((error as ApiError)?.offline); }
+function translatedCaseType(lang: Language, type: string) {
+  const values = lang === "hi"
+    ? { wage_theft: "मजदूरी नहीं मिली", unsafe_site: "असुरक्षित जगह", harassment: "उत्पीड़न" }
+    : { wage_theft: "Unpaid wages", unsafe_site: "Unsafe site", harassment: "Harassment" };
+  return values[type as keyof typeof values] || type;
+}
+function translatedStatus(lang: Language, status: string) {
+  const values = lang === "hi"
+    ? { new: "नया", assigned: "सौंपा गया", in_progress: "काम चल रहा है", resolved: "हल हो गया" }
+    : { new: "New", assigned: "Assigned", in_progress: "In progress", resolved: "Resolved" };
+  return values[status as keyof typeof values] || status;
+}
+function queueWork(item: QueueItem) {
+  const queue = JSON.parse(localStorage.getItem("pehchaan-offline-queue") || "[]") as QueueItem[];
+  localStorage.setItem("pehchaan-offline-queue", JSON.stringify([...queue, item]));
 }
 
-function Shell({ children, english, setEnglish }: { children: React.ReactNode; english: boolean; setEnglish: (value: boolean) => void }) {
-  return <><Navbar english={english} setEnglish={setEnglish} />{children}<Footer /></>;
+function Navbar({ lang, setLang }: { lang: Language; setLang: (value: Language) => void }) {
+  const t = labels[lang];
+  return <header className="navbar"><Link className="brand" to="/">{lang === "hi" ? "पहचान" : "Pehchaan"}<span>.</span></Link><nav><Link to="/">{t.home}</Link><Link to="/how-it-works">{t.how}</Link><Link to="/for-workers">{t.workers}</Link><Link to="/for-organizations">{t.orgs}</Link><Link to="/safety">{t.safety}</Link><Link to="/about">{t.about}</Link></nav><div className="nav-actions"><button className="language" onClick={() => setLang(lang === "hi" ? "en" : "hi")}>{lang === "hi" ? "EN" : "हिंदी"} ↔</button><Link className="button button-small" to="/join">{t.join}</Link></div></header>;
 }
 
-function Home() {
-  return <main>
-    <section className="hero" style={{ backgroundImage: `linear-gradient(90deg, rgba(8,32,46,.9), rgba(8,32,46,.3)), url(${photos.hero})` }}>
-      <div className="hero-content"><p className="eyebrow">{hi.heroEyebrow}</p><h1>{hi.tagline}</h1><p className="hero-copy">{hi.intro}</p><div className="hero-actions"><Link className="button" to="/join">{hi.join} <span>→</span></Link><Link className="button button-ghost" to="/how-it-works">{hi.learn}</Link></div></div>
-      <div className="hero-note"><strong>{hi.private}</strong><br />{hi.consent}</div>
-    </section>
-    <section className="section reality"><div className="section-heading"><p className="eyebrow coral">{hi.reality}</p><h2>{hi.realityTitle}</h2><p>{hi.realityBody}</p></div><div className="card-grid">{hi.cards.map(([title, body], i) => <motion.article whileHover={{ y: -6 }} className={`feature-card tone-${i}`} key={title}><span className="card-number">0{i + 1}</span><h3>{title}</h3><p>{body}</p><span className="card-arrow">↗</span></motion.article>)}</div></section>
-    <section className="section split"><div className="image-card" style={{ backgroundImage: `url(${photos.worker})` }} /><div><p className="eyebrow teal">{hi.simple}</p><h2>{hi.recordTitle}</h2><p>{hi.recordBody}</p><Link className="text-link" to="/for-workers">{hi.workerLink}</Link></div></section>
-    <section className="steps section"><div className="section-heading"><p className="eyebrow green">{hi.how}</p><h2>{hi.stepsTitle}</h2></div><div className="step-row">{hi.steps.map((step, i) => <div className="step" key={step}><span>{i + 1}</span><h3>{step}</h3><p>{hi.stepBody}</p></div>)}</div></section>
-  </main>;
+function PublicHome({ lang }: { lang: Language }) {
+  const t = labels[lang];
+  const hi = lang === "hi";
+  return <main><section className="hero" style={{ backgroundImage: `linear-gradient(90deg, rgba(8,32,46,.9), rgba(8,32,46,.3)), url(${publicPhotos.hero})` }}><div className="hero-content"><p className="eyebrow">{hi ? "सुरक्षित भविष्य की शुरुआत अपनी बात कहने से होती है" : "A safer future starts with being heard"}</p><h1>{hi ? "हर श्रमिक सुरक्षित कल का हकदार है" : "Every Worker Deserves a Safer Tomorrow"}</h1><p className="hero-copy">{hi ? "पहचान प्रवासी श्रमिकों को मजदूरी सुरक्षित रखने, असुरक्षित परिस्थितियों की सूचना देने और भरोसेमंद सहायता से जुड़ने में मदद करता है।" : "Pehchaan helps migrant workers protect wages, report unsafe conditions, and connect with trusted support."}</p><div className="hero-actions"><Link className="button" to="/worker/login">{t.login} →</Link><Link className="button button-ghost" to="/how-it-works">{t.how}</Link></div></div></section></main>;
 }
 
-function ContentPage({ content }: { content: string[] }) {
-  const [eyebrow, title, body, bullets, image] = content;
-  return <main><section className="page-hero"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p>{body}</p></section><section className="section split content-split"><div className="image-card tall" style={{ backgroundImage: `url(${image})` }} /><div><h2>{hi.support}</h2><ul className="check-list">{bullets.map((item) => <li key={item}>✓ <span>{item}</span></li>)}</ul><Link className="button" to="/join">{hi.joinPilot}</Link></div></section></main>;
+function Auth({ lang, setSession }: { lang: Language; setSession: (session: Session) => void }) {
+  const t = labels[lang]; const [phone, setPhone] = React.useState(""); const [otp, setOtp] = React.useState(""); const [sent, setSent] = React.useState(false); const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState("");
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { if (!sent) { await authApi.requestOtp(phone); setSent(true); } else { const result = await authApi.verifyOtp(phone, otp); setSession({ token: result.accessToken, workerId: result.user.id, expiresAt: Date.now() + 24 * 60 * 60 * 1000 }); } } catch (cause) { setError(isOffline(cause) ? t.offline : t.error); } finally { setBusy(false); } };
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">{t.login}</p><h1>{sent ? t.otp : t.phone}</h1><input required type={sent ? "text" : "tel"} value={sent ? otp : phone} onChange={(event) => sent ? setOtp(event.target.value) : setPhone(event.target.value)} placeholder={sent ? "123456" : "+91 98765 43210"} /><button className="button" disabled={busy}>{busy ? t.loading : sent ? t.verify : t.sendOtp}</button>{sent && <p className="helper">{t.demo}</p>}{error && <p className="error">{error}</p>}</form></main>;
 }
 
-function Join() {
-  const [submitted, setSubmitted] = React.useState(false);
-  return <main><section className="page-hero"><p className="eyebrow coral">बातचीत की शुरुआत</p><h1>पहचान के पायलट से जुड़ें।</h1><p>अपने या अपनी संस्था के बारे में थोड़ी जानकारी दें। हमारी टीम पायलट के बारे में आपसे संपर्क करेगी।</p></section><section className="section form-section"><form onSubmit={(event) => { event.preventDefault(); setSubmitted(true); }}><div className="form-grid"><label>नाम<input required /></label><label>मैं हूं<select><option>श्रमिक</option><option>NGO</option><option>नियोक्ता</option><option>सहयोगी</option></select></label><label>शहर या क्षेत्र<input required /></label><label>फोन या ईमेल<input required /></label></div><label>संदेश<textarea rows={5} placeholder="पहचान आपकी कैसे सहायता कर सकता है?" /></label><label className="consent"><input required type="checkbox" /> मैं सहमत हूं कि पहचान टीम पायलट के बारे में मुझसे संपर्क कर सकती है।</label><button className="button" type="submit">अपनी रुचि भेजें →</button>{submitted && <p className="success">धन्यवाद। हमारी टीम पहचान पायलट के बारे में आपसे संपर्क करेगी।</p>}</form><aside><p className="eyebrow teal">सवाल</p><h2>जानना जरूरी है।</h2>{["क्या पहचान श्रमिकों के लिए मुफ्त है?", "क्या मेरी शिकायत निजी रहेगी?", "क्या मैं अंग्रेजी के बिना पहचान इस्तेमाल कर सकता हूं?", "क्या पहचान कानूनी प्रतिनिधित्व देता है?", "NGO पहचान के साथ कैसे जुड़ सकता है?"].map((q) => <details key={q}><summary>{q}</summary><p>पायलट की बातचीत में हम आपको यह बात सरल भाषा में समझाएंगे।</p></details>)}</aside></section></main>;
+function WorkerLayout({ lang, dashboard, logout, children }: { lang: Language; dashboard: Dashboard; logout: () => void; children: React.ReactNode }) {
+  const t = labels[lang]; const navigate = useNavigate();
+  return <main className="worker-app"><aside className="worker-nav"><Link className="brand" to="/worker">{lang === "hi" ? "पहचान" : "Pehchaan"}<span>.</span></Link><button onClick={() => navigate("/worker")}>{t.dashboard}</button><button onClick={() => navigate("/worker/wages")}>{t.wages}</button><button onClick={() => navigate("/worker/check-in")}>{t.checkin}</button><button onClick={() => navigate("/worker/report")}>{t.complaint}</button><button onClick={() => navigate("/worker/cases")}>{t.cases}</button><button className="logout-link" onClick={logout}>{t.logout}</button></aside><section className="worker-content">{children}</section></main>;
 }
+
+function Loading({ lang }: { lang: Language }) { return <div className="loading-card" aria-live="polite">{labels[lang].loading}</div>; }
+function ErrorBox({ lang, offline, onRetry }: { lang: Language; offline?: boolean; onRetry: () => void }) { const t = labels[lang]; return <div className="error-box"><p>{offline ? t.offline : t.error}</p><button className="button button-small" onClick={onRetry}>{t.retry}</button></div>; }
+
+function DashboardHome({ lang, dashboard }: { lang: Language; dashboard: Dashboard }) {
+  const t = labels[lang]; const pending = dashboard.wageEntries.reduce((sum, item) => sum + item.amount, 0); const latest = dashboard.checkIns.at(-1);
+  return <><h1>{t.dashboard}</h1><div className="stats-grid"><div className="stat-card"><span>{t.wages}</span><strong>₹{pending}</strong></div><div className="stat-card"><span>{t.checkin}</span><strong>{latest?.status === "unsafe" || latest?.status === "emergency" ? t.help : t.safe}</strong></div><div className="stat-card"><span>{t.cases}</span><strong>{dashboard.cases.length}</strong></div></div><div className="worker-cards"><Link className="worker-card" to="/worker/wages"><h2>{t.wages}</h2><p>{dashboard.wageEntries.length ? `${dashboard.wageEntries.length} ${lang === "hi" ? "रिकॉर्ड" : "records"}` : t.noData}</p></Link><Link className="worker-card" to="/worker/check-in"><h2>{t.checkin}</h2><p>{latest?.notes || t.noData}</p></Link><Link className="worker-card" to="/worker/report"><h2>{t.complaint}</h2><p>{t.summary}</p></Link></div></>;
+}
+
+function Wages({ lang, dashboard, refresh }: { lang: Language; dashboard: Dashboard; refresh: () => Promise<void> }) {
+  const t = labels[lang]; const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState(""); const [form, setForm] = React.useState({ promised: "", received: "", date: new Date().toISOString().slice(0, 10), note: "" });
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { await workerApi.addWage({ workerId: dashboard.worker.id, amount: Number(form.received || form.promised), type: form.received ? "received" : "promised", date: form.date, notes: form.note }); await refresh(); setForm({ ...form, promised: "", received: "", note: "" }); } catch (cause) { setError(isOffline(cause) ? t.offline : t.error); } finally { setBusy(false); } };
+  return <><h1>{t.wages}</h1>{error && <ErrorBox lang={lang} offline={error === t.offline} onRetry={() => setError("")} />}<form className="worker-form" onSubmit={submit}><label>{t.promised}<input type="number" value={form.promised} onChange={(e) => setForm({ ...form, promised: e.target.value })} /></label><label>{t.received}<input type="number" value={form.received} onChange={(e) => setForm({ ...form, received: e.target.value })} /></label><label>{t.date}<input type="date" required value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></label><label>{t.note}<textarea value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label><button className="button" disabled={busy}>{busy ? t.loading : t.save}</button></form><div className="list-panel">{dashboard.wageEntries.map((entry) => <div className="list-row" key={entry.id}><strong>₹{entry.amount}</strong><span>{entry.type} · {entry.date}</span></div>)}</div></>;
+}
+
+function CheckIn({ lang, dashboard, refresh }: { lang: Language; dashboard: Dashboard; refresh: () => Promise<void> }) {
+  const t = labels[lang]; const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState("");
+  const submit = async (status: "safe" | "unsafe") => { const body = { workerId: dashboard.worker.id, status, locationConsent: false, notes: status === "safe" ? "Worker reported safe." : "Worker requested help." }; setBusy(true); setError(""); try { await workerApi.checkIn(body); await refresh(); } catch (cause) { if (isOffline(cause)) { queueWork({ id: crypto.randomUUID(), kind: "checkin", body }); setError(t.offline); } else setError(t.error); } finally { setBusy(false); } };
+  return <><h1>{t.checkin}</h1>{error && <ErrorBox lang={lang} offline={error === t.offline} onRetry={() => setError("")} />}<div className="checkin-actions"><button className="big-action safe-action" disabled={busy} onClick={() => submit("safe")}>✓<span>{t.safe}</span></button><button className="big-action help-action" disabled={busy} onClick={() => submit("unsafe")}>!<span>{t.help}</span></button></div><div className="list-panel">{dashboard.checkIns.slice().reverse().map((item) => <div className="list-row" key={item.id}><strong>{item.status === "safe" ? t.safe : t.help}</strong><span>{new Date(item.createdAt).toLocaleString()}</span></div>)}</div></>;
+}
+
+function Report({ lang, dashboard, refresh }: { lang: Language; dashboard: Dashboard; refresh: () => Promise<void> }) {
+  const t = labels[lang]; const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState(""); const [summary, setSummary] = React.useState(""); const [type, setType] = React.useState("wage_theft");
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); const body = { workerId: dashboard.worker.id, type, priority: "medium", summary }; setBusy(true); setError(""); try { await workerApi.createCase(body); setSummary(""); await refresh(); } catch (cause) { if (isOffline(cause)) { queueWork({ id: crypto.randomUUID(), kind: "case", body }); setError(t.offline); } else setError(t.error); } finally { setBusy(false); } };
+  return <><h1>{t.complaint}</h1>{error && <ErrorBox lang={lang} offline={error === t.offline} onRetry={() => setError("")} />}<form className="worker-form" onSubmit={submit}><label>{t.type}<select value={type} onChange={(e) => setType(e.target.value)}><option value="wage_theft">{lang === "hi" ? "मजदूरी नहीं मिली" : "Unpaid wages"}</option><option value="unsafe_site">{lang === "hi" ? "असुरक्षित जगह" : "Unsafe site"}</option><option value="harassment">{lang === "hi" ? "उत्पीड़न" : "Harassment"}</option></select></label><label>{t.summary}<textarea required rows={6} value={summary} onChange={(e) => setSummary(e.target.value)} /></label><button className="button" disabled={busy}>{busy ? t.loading : t.submit}</button></form></>;
+}
+
+function Cases({ lang, dashboard }: { lang: Language; dashboard: Dashboard }) { const t = labels[lang]; return <><h1>{t.cases}</h1><div className="list-panel">{dashboard.cases.length ? dashboard.cases.map((item) => <div className="list-row" key={item.id}><strong>{translatedCaseType(lang, item.type)}</strong><span>{translatedStatus(lang, item.status)} · {item.priority} · {new Date(item.createdAt).toLocaleDateString()}</span><p>{item.summary}</p></div>) : <p>{t.noData}</p>}</div></>; }
+
+function WorkerArea({ lang, session, logout }: { lang: Language; session: Session; logout: () => void }) {
+  const [dashboard, setDashboard] = React.useState<Dashboard | null>(null); const [loading, setLoading] = React.useState(true); const [offline, setOffline] = React.useState(false);
+  const refresh = React.useCallback(async () => { setLoading(true); try { setDashboard(await workerApi.dashboard(session.workerId)); setOffline(false); } catch (cause) { setOffline(isOffline(cause)); } finally { setLoading(false); } }, [session.workerId]);
+  React.useEffect(() => { void refresh(); }, [refresh]);
+  React.useEffect(() => { const sync = async () => { const queue = JSON.parse(localStorage.getItem("pehchaan-offline-queue") || "[]") as QueueItem[]; if (!queue.length) return; const remaining: QueueItem[] = []; for (const item of queue) { try { if (item.kind === "checkin") await workerApi.checkIn(item.body); else await workerApi.createCase(item.body); } catch { remaining.push(item); } } localStorage.setItem("pehchaan-offline-queue", JSON.stringify(remaining)); if (!remaining.length) void refresh(); }; window.addEventListener("online", sync); void sync(); return () => window.removeEventListener("online", sync); }, [refresh]);
+  if (loading && !dashboard) return <WorkerLayout lang={lang} dashboard={{ worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] }} logout={logout}><Loading lang={lang} /></WorkerLayout>;
+  if (!dashboard) return <WorkerLayout lang={lang} dashboard={{ worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] }} logout={logout}><ErrorBox lang={lang} offline={offline} onRetry={() => void refresh()} /></WorkerLayout>;
+  return <WorkerLayout lang={lang} dashboard={dashboard} logout={logout}>{offline && <ErrorBox lang={lang} offline onRetry={() => void refresh()} />}<Routes><Route index element={<DashboardHome lang={lang} dashboard={dashboard} />} /><Route path="wages" element={<Wages lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="check-in" element={<CheckIn lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="report" element={<Report lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="cases" element={<Cases lang={lang} dashboard={dashboard} />} /></Routes></WorkerLayout>;
+}
+
+function PublicPage({ lang, title }: { lang: Language; title: string }) { return <main className="page-hero"><p className="eyebrow">{title}</p><h1>{lang === "hi" ? "सुरक्षित सहायता तक एक साफ रास्ता।" : "A clear path to safer support."}</h1><p>{lang === "hi" ? "यह जानकारी पेज जल्द ही और विस्तार से उपलब्ध होगा।" : "This information page will be expanded soon."}</p></main>; }
 
 function App() {
-  const [english, setEnglish] = React.useState(false);
-  const toggleLanguage = (value: boolean) => { setEnglish(value); localStorage.setItem("pehchaan-language", value ? "en" : "hi"); };
-  return <Shell english={english} setEnglish={toggleLanguage}><Routes>
-    <Route path="/" element={<Home />} />
-    {Object.entries(pageContent).map(([path, content]) => <Route key={path} path={path} element={<ContentPage content={content} />} />)}
-    <Route path="/join" element={<Join />} />
-  </Routes></Shell>;
+  const [lang, setLang] = React.useState<Language>(() => localStorage.getItem("pehchaan-language") === "en" ? "en" : "hi");
+  const [session, setSessionState] = React.useState<Session | null>(() => getSession());
+  const setSession = (value: Session) => { localStorage.setItem(sessionKey, JSON.stringify(value)); setSessionState(value); };
+  const logout = () => { if (window.confirm(labels[lang].confirmLogout)) { localStorage.removeItem(sessionKey); setSessionState(null); window.location.assign("/"); } };
+  const updateLang = (value: Language) => { setLang(value); localStorage.setItem("pehchaan-language", value); };
+  return <><Navbar lang={lang} setLang={updateLang} /><Routes><Route path="/" element={<PublicHome lang={lang} />} /><Route path="/worker/login" element={session ? <Navigate to="/worker" replace /> : <Auth lang={lang} setSession={setSession} />} /><Route path="/worker/*" element={session ? <WorkerArea lang={lang} session={session} logout={logout} /> : <Navigate to="/worker/login" replace />} /><Route path="*" element={<PublicPage lang={lang} title={lang === "hi" ? "पहचान" : "Pehchaan"} />} /></Routes><footer><div><Link className="brand" to="/">Pehchaan<span>.</span></Link><p>{lang === "hi" ? "हर श्रमिक सुरक्षित कल का हकदार है।" : "Every worker deserves a safer tomorrow."}</p></div></footer></>;
 }
 
 export default App;
