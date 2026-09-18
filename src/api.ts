@@ -46,10 +46,33 @@ export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; t
 
 type ApiError = Error & { offline?: boolean; status?: number };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   try {
-    const response = await fetch(path, init);
+    const session = (() => {
+      try {
+        const worker = JSON.parse(localStorage.getItem("pehchaan-worker-session") || "null");
+        const ngo = JSON.parse(localStorage.getItem("pehchaan-ngo-session") || "null");
+        return worker || ngo || null;
+      } catch { return ""; }
+    })();
+    const token = session?.token || "";
+    const headers = new Headers(init?.headers);
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(path, { ...init, headers });
     const payload = await response.json().catch(() => ({}));
+    if (response.status === 401 && retry && session?.refreshToken && path !== "/api/auth/refresh") {
+      const refreshResponse = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.refreshToken}`, "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (refreshResponse.ok) {
+        const refreshed = await refreshResponse.json();
+        const key = localStorage.getItem("pehchaan-worker-session") ? "pehchaan-worker-session" : "pehchaan-ngo-session";
+        localStorage.setItem(key, JSON.stringify({ ...session, token: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: Date.now() + refreshed.expiresIn * 1000 }));
+        return request<T>(path, init, false);
+      }
+    }
     if (!response.ok) {
       const error = new Error(String(payload.error || "Request failed.")) as ApiError;
       error.status = response.status;
@@ -74,7 +97,9 @@ const json = (body: unknown): RequestInit => ({
 
 export const authApi = {
   requestOtp: (phone: string) => request<{ workerId: string; otpHint?: string }>("/api/auth/request-otp", json({ phone })),
-  verifyOtp: (phone: string, otp: string) => request<{ accessToken: string; user: Worker }>("/api/auth/verify-otp", json({ phone, otp })),
+  verifyOtp: (phone: string, otp: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: Worker }>("/api/auth/verify-otp", json({ phone, otp })),
+  ngoLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/ngo-login", json({ email, password })),
+  logout: (refreshToken?: string) => request<void>("/api/auth/logout", json({ refreshToken })),
 };
 
 export const workerApi = {

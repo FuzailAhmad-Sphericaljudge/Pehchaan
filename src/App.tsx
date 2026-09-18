@@ -18,7 +18,7 @@ const labels = {
 
 const publicPhotos = { hero: "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=1800&q=80", worker: "https://images.unsplash.com/photo-1521791055366-0d553872125f?auto=format&fit=crop&w=900&q=80" };
 const sessionKey = "pehchaan-worker-session";
-type Session = { token: string; workerId: string; expiresAt: number };
+type Session = { token: string; refreshToken: string; workerId: string; expiresAt: number };
 type QueueItem = { id: string; kind: "checkin" | "case"; body: Record<string, unknown> };
 
 function getSession(): Session | null {
@@ -59,7 +59,7 @@ function PublicHome({ lang }: { lang: Language }) {
 
 function Auth({ lang, setSession }: { lang: Language; setSession: (session: Session) => void }) {
   const t = labels[lang]; const [phone, setPhone] = React.useState(""); const [otp, setOtp] = React.useState(""); const [sent, setSent] = React.useState(false); const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState("");
-  const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { if (!sent) { await authApi.requestOtp(phone); setSent(true); } else { const result = await authApi.verifyOtp(phone, otp); setSession({ token: result.accessToken, workerId: result.user.id, expiresAt: Date.now() + 24 * 60 * 60 * 1000 }); } } catch (cause) { setError(isOffline(cause) ? t.offline : t.error); } finally { setBusy(false); } };
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); setError(""); try { if (!sent) { await authApi.requestOtp(phone); setSent(true); } else { const result = await authApi.verifyOtp(phone, otp); setSession({ token: result.accessToken, refreshToken: result.refreshToken, workerId: result.user.id, expiresAt: Date.now() + 15 * 60 * 1000 }); } } catch (cause) { setError(isOffline(cause) ? t.offline : t.error); } finally { setBusy(false); } };
   return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">{t.login}</p><h1>{sent ? t.otp : t.phone}</h1><input required type={sent ? "text" : "tel"} value={sent ? otp : phone} onChange={(event) => sent ? setOtp(event.target.value) : setPhone(event.target.value)} placeholder={sent ? "123456" : "+91 98765 43210"} /><button className="button" disabled={busy}>{busy ? t.loading : sent ? t.verify : t.sendOtp}</button>{sent && <p className="helper">{t.demo}</p>}{error && <p className="error">{error}</p>}</form></main>;
 }
 
@@ -113,13 +113,13 @@ const ngoText = {
   en: { login: "Organization login", email: "Email", password: "Password", signIn: "Sign in", demo: "Demo: ngo@pehchaan.org / demo", inbox: "Case inbox", audit: "Audit log", all: "All", fresh: "New", high: "High priority", mine: "Assigned to me", search: "Search case or worker", noCases: "No cases yet.", retry: "Try again", loading: "Loading...", error: "Could not load this information. Check your connection and try again.", assigned: "Assign", status: "Status", note: "Add note", add: "Add", evidence: "Evidence", notes: "Notes", history: "History", acknowledge: "Acknowledge alert", acknowledged: "Acknowledged", back: "Back to inbox", save: "Save", logout: "Log out", logoutConfirm: "Do you want to log out?" },
 } as const;
 
-type NgoSession = { email: string; expiresAt: number };
+type NgoSession = { email: string; token: string; refreshToken: string; expiresAt: number };
 const ngoSessionKey = "pehchaan-ngo-session";
 function getNgoSession(): NgoSession | null { try { const value = JSON.parse(localStorage.getItem(ngoSessionKey) || "null") as NgoSession | null; return value && value.expiresAt > Date.now() ? value : null; } catch { return null; } }
 
 function NgoLogin({ lang, setSession }: { lang: Language; setSession: (session: NgoSession) => void }) {
   const t = ngoText[lang]; const [email, setEmail] = React.useState(""); const [password, setPassword] = React.useState(""); const [error, setError] = React.useState("");
-  const submit = (event: React.FormEvent) => { event.preventDefault(); if (email !== "ngo@pehchaan.org" || password !== "demo") { setError(lang === "hi" ? "डेमो ईमेल या पासवर्ड गलत है।" : "Demo email or password is incorrect."); return; } const session = { email, expiresAt: Date.now() + 8 * 60 * 60 * 1000 }; localStorage.setItem(ngoSessionKey, JSON.stringify(session)); setSession(session); };
+  const submit = async (event: React.FormEvent) => { event.preventDefault(); setError(""); try { const result = await authApi.ngoLogin(email, password); const session = { email, token: result.accessToken, refreshToken: result.refreshToken, expiresAt: Date.now() + result.expiresIn * 1000 }; localStorage.setItem(ngoSessionKey, JSON.stringify(session)); setSession(session); } catch { setError(lang === "hi" ? "संगठन की जानकारी गलत है या सर्वर उपलब्ध नहीं है।" : "Organization credentials are invalid or the server is unavailable."); } };
   return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">{t.login}</p><h1>{t.login}</h1><label>{t.email}<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>{t.password}<input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label><button className="button">{t.signIn}</button><p className="helper">{t.demo}</p>{error && <p className="error">{error}</p>}</form></main>;
 }
 
@@ -157,9 +157,9 @@ function App() {
   const [session, setSessionState] = React.useState<Session | null>(() => getSession());
   const [ngoSession, setNgoSession] = React.useState<NgoSession | null>(() => getNgoSession());
   const setSession = (value: Session) => { localStorage.setItem(sessionKey, JSON.stringify(value)); setSessionState(value); };
-  const logout = () => { if (window.confirm(labels[lang].confirmLogout)) { localStorage.removeItem(sessionKey); setSessionState(null); window.location.assign("/"); } };
+  const logout = () => { if (window.confirm(labels[lang].confirmLogout)) { void authApi.logout(session?.refreshToken); localStorage.removeItem(sessionKey); setSessionState(null); window.location.assign("/"); } };
   const updateLang = (value: Language) => { setLang(value); localStorage.setItem("pehchaan-language", value); };
-  const ngoLogout = () => { if (window.confirm(ngoText[lang].logoutConfirm)) { localStorage.removeItem(ngoSessionKey); setNgoSession(null); window.location.assign("/"); } };
+  const ngoLogout = () => { if (window.confirm(ngoText[lang].logoutConfirm)) { void authApi.logout(ngoSession?.refreshToken); localStorage.removeItem(ngoSessionKey); setNgoSession(null); window.location.assign("/"); } };
   return <><Navbar lang={lang} setLang={updateLang} /><Routes><Route path="/" element={<PublicHome lang={lang} />} /><Route path="/worker/login" element={session ? <Navigate to="/worker" replace /> : <Auth lang={lang} setSession={setSession} />} /><Route path="/worker/*" element={session ? <WorkerArea lang={lang} session={session} logout={logout} /> : <Navigate to="/worker/login" replace />} /><Route path="/ngo/login" element={ngoSession ? <Navigate to="/ngo" replace /> : <NgoLogin lang={lang} setSession={setNgoSession} />} /><Route path="/ngo/*" element={ngoSession ? <NgoArea lang={lang} logout={ngoLogout} /> : <Navigate to="/ngo/login" replace />} /><Route path="*" element={<PublicPage lang={lang} title={lang === "hi" ? "पहचान" : "Pehchaan"} />} /></Routes><footer><div><Link className="brand" to="/">Pehchaan<span>.</span></Link><p>{lang === "hi" ? "हर श्रमिक सुरक्षित कल का हकदार है।" : "Every worker deserves a safer tomorrow."}</p></div></footer></>;
 }
 
