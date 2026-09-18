@@ -10,6 +10,8 @@ const workers = new Map();
 const wageEntries = [];
 const checkIns = [];
 const cases = [];
+const caseNotes = [];
+const evidenceItems = [];
 const auditLog = [];
 
 function makeAudit(action, actor, target, details = {}) {
@@ -129,6 +131,10 @@ function getWorkerDashboard(workerId) {
     checkIns: checkIns.filter((entry) => entry.workerId === workerId),
     cases: cases.filter((entry) => entry.workerId === workerId),
   };
+}
+
+function findCase(caseId) {
+  return cases.find((item) => item.id === caseId);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -349,7 +355,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && pathname.startsWith('/api/cases/') && pathname.endsWith('/evidence')) {
     try {
-      const caseId = pathname.split('/')[2];
+      const caseId = pathname.split('/')[3];
+      if (!findCase(caseId)) {
+        jsonResponse(res, 404, { error: 'Case not found.' });
+        return;
+      }
+
       const body = await parseBody(req);
       const evidence = {
         id: randomUUID(),
@@ -360,6 +371,7 @@ const server = http.createServer(async (req, res) => {
         checksum: body.checksum || null,
         createdAt: new Date().toISOString(),
       };
+      evidenceItems.push(evidence);
       makeAudit('evidence_uploaded', 'caseworker', caseId, { evidence });
       jsonResponse(res, 201, { evidence });
       return;
@@ -374,11 +386,65 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname.startsWith('/api/ngo/cases/') && pathname.split('/').length === 5) {
+    const caseId = pathname.split('/')[4];
+    const targetCase = findCase(caseId);
+    if (!targetCase) {
+      jsonResponse(res, 404, { error: 'Case not found.' });
+      return;
+    }
+
+    jsonResponse(res, 200, {
+      case: targetCase,
+      notes: caseNotes.filter((note) => note.caseId === caseId),
+      evidence: evidenceItems.filter((item) => item.caseId === caseId),
+      auditLog: auditLog.filter((entry) => entry.target === caseId),
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname.startsWith('/api/ngo/cases/') && pathname.endsWith('/notes')) {
+    try {
+      const caseId = pathname.split('/')[4];
+      if (!findCase(caseId)) {
+        jsonResponse(res, 404, { error: 'Case not found.' });
+        return;
+      }
+
+      const body = await parseBody(req);
+      const noteText = String(body.text || '').trim();
+      if (!noteText) {
+        jsonResponse(res, 400, { error: 'Note text is required.' });
+        return;
+      }
+
+      const note = {
+        id: randomUUID(),
+        caseId,
+        author: String(body.author || 'caseworker'),
+        text: noteText,
+        createdAt: new Date().toISOString(),
+      };
+      caseNotes.push(note);
+      makeAudit('case_note_created', note.author, caseId, { noteId: note.id });
+      jsonResponse(res, 201, { note });
+      return;
+    } catch (error) {
+      jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
+      return;
+    }
+  }
+
+  if (req.method === 'GET' && pathname === '/api/ngo/audit-log') {
+    jsonResponse(res, 200, { entries: auditLog, total: auditLog.length });
+    return;
+  }
+
   if (req.method === 'PATCH' && pathname.startsWith('/api/ngo/cases/')) {
     try {
       const caseId = pathname.split('/')[3];
       const body = await parseBody(req);
-      const targetCase = cases.find((item) => item.id === caseId);
+      const targetCase = findCase(caseId);
       if (!targetCase) {
         jsonResponse(res, 404, { error: 'Case not found.' });
         return;
@@ -400,7 +466,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && pathname.startsWith('/api/cases/') && pathname.endsWith('/alerts')) {
     try {
-      const caseId = pathname.split('/')[2];
+      const caseId = pathname.split('/')[3];
       const body = await parseBody(req);
       const alert = {
         id: randomUUID(),
@@ -434,6 +500,9 @@ const server = http.createServer(async (req, res) => {
       'POST /api/cases',
       'POST /api/cases/:id/evidence',
       'GET /api/ngo/cases',
+      'GET /api/ngo/cases/:id',
+      'POST /api/ngo/cases/:id/notes',
+      'GET /api/ngo/audit-log',
       'PATCH /api/ngo/cases/:id',
       'POST /api/cases/:id/alerts',
     ],
