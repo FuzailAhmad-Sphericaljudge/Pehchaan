@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pehchaan - Migrate</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Pehchaan</p>
+          <h1>Migrant Worker Safety</h1>
+        </div>
+        <button id="logoutBtn" class="secondary-btn">Logout</button>
+      </header>
+
+      <main class="layout">
+        <section class="panel auth-panel" id="authPanel">
+          <h2>Welcome</h2>
+          <p>Verify your phone to continue.</p>
+          <label>
+            Phone number
+            <input id="phoneInput" type="tel" placeholder="+91 98765 43210" />
+          </label>
+          <button id="otpBtn" class="primary-btn">Send OTP</button>
+          <div id="otpBox" class="otp-box hidden">
+            <label>
+              OTP
+              <input id="otpInput" type="text" maxlength="6" placeholder="123456" />
+            </label>
+            <button id="verifyBtn" class="primary-btn">Verify</button>
+          </div>
+          <p class="demo-note">Demo OTP: 123456</p>
+        </section>
+
+        <section class="panel hidden" id="dashboardPanel">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span>Pending wages</span>
+              <strong id="pendingWages">₹0</strong>
+            </div>
+            <div class="stat-card">
+              <span>Safety status</span>
+              <strong id="safetyStatus">Safe</strong>
+            </div>
+            <div class="stat-card">
+              <span>Open cases</span>
+              <strong id="openCases">0</strong>
+            </div>
+          </div>
+
+          <div class="section-grid">
+            <div class="card">
+              <h3>Worker profile</h3>
+              <form id="profileForm">
+                <label>
+                  Employer
+                  <input id="employerInput" type="text" />
+                </label>
+                <label>
+                  Worksite
+                  <input id="worksiteInput" type="text" />
+                </label>
+                <label>
+                  Origin
+                  <input id="originInput" type="text" />
+                </label>
+                <label>
+                  Wage promise
+                  <input id="wagePromiseInput" type="number" min="0" step="100" />
+                </label>
+                <label>
+                  Pay frequency
+                  <select id="payFrequencyInput">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </label>
+                <button type="submit" class="primary-btn">Save profile</button>
+              </form>
+            </div>
+
+            <div class="card">
+              <h3>Daily safety check-in</h3>
+              <form id="checkinForm">
+                <label>
+                  Status
+                  <select id="safetyStatusInput">
+                    <option value="safe">Safe</option>
+                    <option value="unsafe">Not safe</option>
+                    <option value="emergency">Emergency</option>
+                  </select>
+                </label>
+                <label>
+                  Hazard type
+                  <input id="hazardInput" type="text" placeholder="Unsafe site / abuse / transport" />
+                </label>
+                <label>
+                  Notes
+                  <textarea id="checkinNotes" rows="3" placeholder="Describe your situation"></textarea>
+                </label>
+                <button type="submit" class="primary-btn">Submit check-in</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="section-grid">
+            <div class="card">
+              <h3>Wage tracker</h3>
+              <form id="wageForm">
+                <label>
+                  Amount received
+                  <input id="wageAmountInput" type="number" min="0" step="100" />
+                </label>
+                <label>
+                  Deductions
+                  <input id="deductionInput" type="number" min="0" step="50" />
+                </label>
+                <label>
+                  Overtime
+                  <input id="overtimeInput" type="number" min="0" step="50" />
+                </label>
+                <button type="submit" class="primary-btn">Add wage entry</button>
+              </form>
+              <ul id="wageList" class="list"></ul>
+            </div>
+
+            <div class="card">
+              <h3>Report a complaint</h3>
+              <form id="caseForm">
+                <label>
+                  Complaint type
+                  <select id="caseTypeInput">
+                    <option value="wage_theft">Wage theft</option>
+                    <option value="unsafe_site">Unsafe site</option>
+                    <option value="harassment">Harassment</option>
+                    <option value="illegal_termination">Illegal termination</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  Priority
+                  <select id="casePriorityInput">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <label>
+                  Summary
+                  <textarea id="caseSummaryInput" rows="3" placeholder="Write details of your issue"></textarea>
+                </label>
+                <button type="submit" class="primary-btn">File complaint</button>
+              </form>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
