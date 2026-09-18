@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, authApi, Dashboard, Language, workerApi } from "./api";
+import { ApiError, authApi, CaseDetail, Dashboard, Language, ngoApi, NgoCase, workerApi } from "./api";
 
 const labels = {
   hi: {
@@ -108,13 +108,59 @@ function WorkerArea({ lang, session, logout }: { lang: Language; session: Sessio
 
 function PublicPage({ lang, title }: { lang: Language; title: string }) { return <main className="page-hero"><p className="eyebrow">{title}</p><h1>{lang === "hi" ? "सुरक्षित सहायता तक एक साफ रास्ता।" : "A clear path to safer support."}</h1><p>{lang === "hi" ? "यह जानकारी पेज जल्द ही और विस्तार से उपलब्ध होगा।" : "This information page will be expanded soon."}</p></main>; }
 
+const ngoText = {
+  hi: { login: "संस्था लॉगिन", email: "ईमेल", password: "पासवर्ड", signIn: "लॉगिन करें", demo: "डेमो: ngo@pehchaan.org / demo", inbox: "केस इनबॉक्स", audit: "ऑडिट लॉग", all: "सभी", fresh: "नए", high: "उच्च प्राथमिकता", mine: "मुझे सौंपे गए", search: "केस या श्रमिक खोजें", noCases: "अभी कोई मामला नहीं है।", retry: "फिर कोशिश करें", loading: "लोड हो रहा है...", error: "जानकारी लोड नहीं हो सकी। कनेक्शन जांचकर फिर कोशिश करें।", assigned: "सौंपें", status: "स्थिति", note: "नोट जोड़ें", add: "जोड़ें", evidence: "प्रमाण", notes: "नोट्स", history: "इतिहास", acknowledge: "अलर्ट स्वीकार करें", acknowledged: "स्वीकार किया गया", back: "इनबॉक्स पर लौटें", save: "सहेजें", logout: "लॉग आउट", logoutConfirm: "क्या आप लॉग आउट करना चाहते हैं?" },
+  en: { login: "Organization login", email: "Email", password: "Password", signIn: "Sign in", demo: "Demo: ngo@pehchaan.org / demo", inbox: "Case inbox", audit: "Audit log", all: "All", fresh: "New", high: "High priority", mine: "Assigned to me", search: "Search case or worker", noCases: "No cases yet.", retry: "Try again", loading: "Loading...", error: "Could not load this information. Check your connection and try again.", assigned: "Assign", status: "Status", note: "Add note", add: "Add", evidence: "Evidence", notes: "Notes", history: "History", acknowledge: "Acknowledge alert", acknowledged: "Acknowledged", back: "Back to inbox", save: "Save", logout: "Log out", logoutConfirm: "Do you want to log out?" },
+} as const;
+
+type NgoSession = { email: string; expiresAt: number };
+const ngoSessionKey = "pehchaan-ngo-session";
+function getNgoSession(): NgoSession | null { try { const value = JSON.parse(localStorage.getItem(ngoSessionKey) || "null") as NgoSession | null; return value && value.expiresAt > Date.now() ? value : null; } catch { return null; } }
+
+function NgoLogin({ lang, setSession }: { lang: Language; setSession: (session: NgoSession) => void }) {
+  const t = ngoText[lang]; const [email, setEmail] = React.useState(""); const [password, setPassword] = React.useState(""); const [error, setError] = React.useState("");
+  const submit = (event: React.FormEvent) => { event.preventDefault(); if (email !== "ngo@pehchaan.org" || password !== "demo") { setError(lang === "hi" ? "डेमो ईमेल या पासवर्ड गलत है।" : "Demo email or password is incorrect."); return; } const session = { email, expiresAt: Date.now() + 8 * 60 * 60 * 1000 }; localStorage.setItem(ngoSessionKey, JSON.stringify(session)); setSession(session); };
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">{t.login}</p><h1>{t.login}</h1><label>{t.email}<input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>{t.password}<input required type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></label><button className="button">{t.signIn}</button><p className="helper">{t.demo}</p>{error && <p className="error">{error}</p>}</form></main>;
+}
+
+function NgoNav({ lang, logout }: { lang: Language; logout: () => void }) {
+  const t = ngoText[lang]; const navigate = useNavigate();
+  return <aside className="worker-nav ngo-nav"><Link className="brand" to="/ngo">{lang === "hi" ? "पहचान" : "Pehchaan"}<span>.</span></Link><button onClick={() => navigate("/ngo")}>{t.inbox}</button><button onClick={() => navigate("/ngo/audit")}>{t.audit}</button><button className="logout-link" onClick={logout}>{t.logout}</button></aside>;
+}
+
+function NgoInbox({ lang }: { lang: Language }) {
+  const t = ngoText[lang]; const [cases, setCases] = React.useState<NgoCase[]>([]); const [filter, setFilter] = React.useState("all"); const [search, setSearch] = React.useState(""); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState(false);
+  const load = React.useCallback(async () => { setLoading(true); try { const result = await ngoApi.cases(); setCases(result.cases); setError(false); } catch { setError(true); } finally { setLoading(false); } }, []);
+  React.useEffect(() => { void load(); }, [load]);
+  const visible = cases.filter((item) => filter === "all" || (filter === "new" && item.status === "new") || (filter === "high" && item.priority === "high") || (filter === "mine" && Boolean(item.owner))).filter((item) => `${item.id} ${item.workerId} ${item.summary}`.toLowerCase().includes(search.toLowerCase()));
+  if (loading) return <Loading lang={lang} />;
+  if (error) return <div className="error-box"><p>{t.error}</p><button className="button button-small" onClick={() => void load()}>{t.retry}</button></div>;
+  return <><div className="ngo-heading"><div><p className="eyebrow teal">Pehchaan NGO</p><h1>{t.inbox}</h1></div><input className="ngo-search" placeholder={t.search} value={search} onChange={(e) => setSearch(e.target.value)} /></div><div className="filter-row">{[["all", t.all], ["new", t.fresh], ["high", t.high], ["mine", t.mine]].map(([value, label]) => <button className={filter === value ? "filter active" : "filter"} onClick={() => setFilter(value)} key={value}>{label}</button>)}</div><div className="list-panel">{visible.length ? visible.map((item) => <Link className="list-row case-row" to={`/ngo/cases/${item.id}`} key={item.id}><div><strong>{translatedCaseType(lang, item.type)}</strong><span>{item.id} · {translatedStatus(lang, item.status)}</span></div><b className={`priority-${item.priority}`}>{item.priority}</b><p>{item.summary}</p></Link>) : <p className="empty-state">{t.noCases}</p>}</div></>;
+}
+
+function NgoCaseDetail({ lang }: { lang: Language }) {
+  const t = ngoText[lang]; const caseId = location.pathname.split("/").pop() || ""; const [detail, setDetail] = React.useState<CaseDetail | null>(null); const [loading, setLoading] = React.useState(true); const [note, setNote] = React.useState(""); const [busy, setBusy] = React.useState(false); const [error, setError] = React.useState(false); const [acknowledged, setAcknowledged] = React.useState(false);
+  const load = React.useCallback(async () => { setLoading(true); try { setDetail(await ngoApi.detail(caseId)); setError(false); } catch { setError(true); } finally { setLoading(false); } }, [caseId]);
+  React.useEffect(() => { void load(); }, [load]);
+  if (loading) return <Loading lang={lang} />; if (error || !detail) return <div className="error-box"><p>{t.error}</p><button className="button button-small" onClick={() => void load()}>{t.retry}</button></div>;
+  const update = async (body: Record<string, unknown>) => { setBusy(true); try { await ngoApi.updateCase(caseId, body); await load(); } finally { setBusy(false); } };
+  const addNote = async (event: React.FormEvent) => { event.preventDefault(); if (!note.trim()) return; setBusy(true); try { await ngoApi.addNote(caseId, { author: "ngo-caseworker", text: note }); setNote(""); await load(); } finally { setBusy(false); } };
+  return <><Link className="text-link" to="/ngo">← {t.back}</Link><div className="ngo-detail-head"><div><p className="eyebrow teal">{detail.case.id}</p><h1>{translatedCaseType(lang, detail.case.type)}</h1><p>{detail.case.summary}</p></div><button className="button button-small" onClick={() => void update({ status: "resolved" })} disabled={busy}>{t.save}</button></div><div className="detail-grid"><section className="list-panel"><h2>{t.status}</h2><div className="status-buttons">{["new", "assigned", "in_progress", "resolved"].map((status) => <button className={detail.case.status === status ? "filter active" : "filter"} onClick={() => void update({ status })} key={status}>{translatedStatus(lang, status)}</button>)}</div><label>{t.assigned}<input defaultValue={detail.case.owner || ""} onBlur={(e) => e.target.value && void update({ owner: e.target.value })} placeholder={lang === "hi" ? "केसवर्कर का नाम" : "Caseworker name"} /></label>{detail.case.priority === "high" && <div className="alert-card"><strong>{lang === "hi" ? "उच्च प्राथमिकता सुरक्षा अलर्ट" : "High priority safety alert"}</strong><button className="button button-small" onClick={() => setAcknowledged(true)} disabled={acknowledged}>{acknowledged ? t.acknowledged : t.acknowledge}</button></div>}</section><section className="list-panel"><h2>{t.notes}</h2>{detail.notes.map((item) => <div className="timeline-item" key={item.id}><strong>{item.author}</strong><span>{new Date(item.createdAt).toLocaleString()}</span><p>{item.text}</p></div>)}<form onSubmit={addNote} className="note-form"><textarea required value={note} onChange={(e) => setNote(e.target.value)} placeholder={t.note} /><button className="button button-small" disabled={busy}>{t.add}</button></form></section><section className="list-panel"><h2>{t.evidence}</h2>{detail.evidence.length ? detail.evidence.map((item) => <div className="list-row" key={item.id}><strong>{item.fileName}</strong><span>{item.type} · {new Date(item.createdAt).toLocaleDateString()}</span></div>) : <p>{t.noCases}</p>}</section><section className="list-panel"><h2>{t.history}</h2>{detail.auditLog.map((item) => <div className="timeline-item" key={item.id}><strong>{item.action}</strong><span>{item.actor} · {new Date(item.timestamp).toLocaleString()}</span></div>)}</section></div></>;
+}
+
+function NgoAudit({ lang }: { lang: Language }) { const t = ngoText[lang]; const [entries, setEntries] = React.useState<CaseDetail["auditLog"]>([]); const [loading, setLoading] = React.useState(true); React.useEffect(() => { ngoApi.audit().then((result) => setEntries(result.entries)).finally(() => setLoading(false)); }, []); if (loading) return <Loading lang={lang} />; return <><h1>{t.audit}</h1><div className="list-panel">{entries.length ? entries.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span></div>) : <p>{t.noCases}</p>}</div></>; }
+
+function NgoArea({ lang, logout }: { lang: Language; logout: () => void }) { return <main className="worker-app"><NgoNav lang={lang} logout={logout} /><section className="worker-content"><Routes><Route index element={<NgoInbox lang={lang} />} /><Route path="cases/:id" element={<NgoCaseDetail lang={lang} />} /><Route path="audit" element={<NgoAudit lang={lang} />} /></Routes></section></main>; }
+
 function App() {
   const [lang, setLang] = React.useState<Language>(() => localStorage.getItem("pehchaan-language") === "en" ? "en" : "hi");
   const [session, setSessionState] = React.useState<Session | null>(() => getSession());
+  const [ngoSession, setNgoSession] = React.useState<NgoSession | null>(() => getNgoSession());
   const setSession = (value: Session) => { localStorage.setItem(sessionKey, JSON.stringify(value)); setSessionState(value); };
   const logout = () => { if (window.confirm(labels[lang].confirmLogout)) { localStorage.removeItem(sessionKey); setSessionState(null); window.location.assign("/"); } };
   const updateLang = (value: Language) => { setLang(value); localStorage.setItem("pehchaan-language", value); };
-  return <><Navbar lang={lang} setLang={updateLang} /><Routes><Route path="/" element={<PublicHome lang={lang} />} /><Route path="/worker/login" element={session ? <Navigate to="/worker" replace /> : <Auth lang={lang} setSession={setSession} />} /><Route path="/worker/*" element={session ? <WorkerArea lang={lang} session={session} logout={logout} /> : <Navigate to="/worker/login" replace />} /><Route path="*" element={<PublicPage lang={lang} title={lang === "hi" ? "पहचान" : "Pehchaan"} />} /></Routes><footer><div><Link className="brand" to="/">Pehchaan<span>.</span></Link><p>{lang === "hi" ? "हर श्रमिक सुरक्षित कल का हकदार है।" : "Every worker deserves a safer tomorrow."}</p></div></footer></>;
+  const ngoLogout = () => { if (window.confirm(ngoText[lang].logoutConfirm)) { localStorage.removeItem(ngoSessionKey); setNgoSession(null); window.location.assign("/"); } };
+  return <><Navbar lang={lang} setLang={updateLang} /><Routes><Route path="/" element={<PublicHome lang={lang} />} /><Route path="/worker/login" element={session ? <Navigate to="/worker" replace /> : <Auth lang={lang} setSession={setSession} />} /><Route path="/worker/*" element={session ? <WorkerArea lang={lang} session={session} logout={logout} /> : <Navigate to="/worker/login" replace />} /><Route path="/ngo/login" element={ngoSession ? <Navigate to="/ngo" replace /> : <NgoLogin lang={lang} setSession={setNgoSession} />} /><Route path="/ngo/*" element={ngoSession ? <NgoArea lang={lang} logout={ngoLogout} /> : <Navigate to="/ngo/login" replace />} /><Route path="*" element={<PublicPage lang={lang} title={lang === "hi" ? "पहचान" : "Pehchaan"} />} /></Routes><footer><div><Link className="brand" to="/">Pehchaan<span>.</span></Link><p>{lang === "hi" ? "हर श्रमिक सुरक्षित कल का हकदार है।" : "Every worker deserves a safer tomorrow."}</p></div></footer></>;
 }
 
 export default App;
