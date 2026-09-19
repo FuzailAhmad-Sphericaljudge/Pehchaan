@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import { closeDatabase, databaseConfigured, loadState, saveState } from './db.js';
 
 const PORT = Number(process.env.PORT || 5000);
 const publicDir = path.resolve(process.cwd(), 'public');
@@ -19,10 +20,18 @@ const cases = [];
 const caseNotes = [];
 const evidenceItems = [];
 const auditLog = [];
+const alerts = [];
 const otpChallenges = new Map();
 const sessions = new Map();
 const rateBuckets = new Map();
 const revokedAccounts = new Set();
+let stateLoaded = false;
+
+function persist() {
+  if (!stateLoaded || !databaseConfigured()) return;
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts })
+    .catch((error) => console.error('Database persistence failed:', error.message));
+}
 
 function makeAudit(action, actor, target, details = {}) {
   const entry = {
@@ -34,6 +43,7 @@ function makeAudit(action, actor, target, details = {}) {
     details,
   };
   auditLog.unshift(entry);
+  persist();
   return entry;
 }
 
@@ -253,6 +263,7 @@ const server = http.createServer(async (req, res) => {
       timestamp: new Date().toISOString(),
       workers: workers.size,
       cases: cases.length,
+      database: databaseConfigured() ? 'postgresql' : 'not_configured',
     });
     return;
   }
@@ -658,6 +669,7 @@ const server = http.createServer(async (req, res) => {
         acknowledgedAt: null,
         createdAt: new Date().toISOString(),
       };
+      alerts.push(alert);
       makeAudit('alert_created', 'system', caseId, alert);
       jsonResponse(res, 201, { alert });
       return;
@@ -712,6 +724,44 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`Pehchaan Migrate worker MVP listening on http://localhost:${PORT}`);
+async function start() {
+  const state = await loadState();
+  if (state) {
+    for (const row of state.workers) {
+      const profile = state.profiles.find((item) => item.worker_id === row.id);
+      workers.set(row.phone, {
+        id: row.id,
+        phone: row.phone,
+        role: row.role,
+        language: row.language,
+        consent: row.consent || {},
+        profile: profile?.details || {},
+        createdAt: new Date(row.created_at).toISOString(),
+      });
+    }
+    for (const row of state.wages) wageEntries.push({ id: row.id, workerId: row.worker_id, date: new Date(row.entry_date).toISOString(), type: row.entry_type, amount: Number(row.amount), deductions: Number(row.deductions), overtime: Number(row.overtime), proofFileId: row.proof_file_id, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.checkins) checkIns.push({ id: row.id, workerId: row.worker_id, status: row.status, hazard: row.hazard, locationConsent: row.location_consent, location: row.location, notes: row.notes, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
+    for (const row of state.notes) caseNotes.push({ id: row.id, caseId: row.case_id, author: row.author, text: row.body, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.evidence) evidenceItems.push({ id: row.id, caseId: row.case_id, type: row.evidence_type, fileName: row.file_name, storageKey: row.storage_key, checksum: row.checksum, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.alerts) alerts.push({ id: row.id, caseId: row.case_id, channel: row.channel, recipient: row.recipient, status: row.status, acknowledgedAt: row.acknowledged_at ? new Date(row.acknowledged_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.audits) auditLog.push({ id: row.id, action: row.action, actor: row.actor, target: row.target, details: row.details, timestamp: new Date(row.created_at).toISOString() });
+    for (const row of state.otp) otpChallenges.set(row.phone, { workerId: row.worker_id, otpHash: row.otp_hash, expiresAt: new Date(row.expires_at).getTime(), attempts: row.attempts });
+    for (const row of state.sessions) sessions.set(row.id, { subject: row.subject, role: row.role, kind: row.kind, createdAt: new Date(row.created_at).getTime() });
+    for (const row of state.revoked) revokedAccounts.add(row.account_id);
+  }
+  stateLoaded = true;
+  server.listen(PORT, () => {
+    console.log(`Pehchaan Migrate worker MVP listening on http://localhost:${PORT}${databaseConfigured() ? ' (PostgreSQL)' : ''}`);
+  });
+}
+
+start().catch((error) => {
+  console.error('Unable to start Pehchaan API:', error);
+  process.exitCode = 1;
+});
+
+process.on('SIGTERM', async () => {
+  await closeDatabase();
+  process.exit(0);
 });
