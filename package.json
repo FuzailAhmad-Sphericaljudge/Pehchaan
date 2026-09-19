@@ -12,6 +12,7 @@
     "start": "node src/server.js"
   },
   "dependencies": {
+    "dotenv": "^18.0.1",
     "framer-motion": "^13.4.0",
     "pg": "^8.23.0",
     "react": "^19.3.0",

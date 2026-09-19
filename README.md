@@ -24,3 +24,13 @@ For production, use encrypted managed PostgreSQL backups with point-in-time
 recovery where available, retain multiple backup generations, and perform
 periodic restore drills. Backup credentials should be kept separate from the
 application runtime credentials.
+
+## Secure evidence storage
+
+Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_EVIDENCE_BUCKET`; never expose the
+service-role key to the browser. The API issues short-lived signed upload and
+download URLs, accepts only JPG/PNG/PDF files up to 10MB, and limits each case
+to ten files. Upload completion requires a SHA-256 checksum. Configure
+`CLAMAV_URL` with the malware-scanning service endpoint; files remain
+unavailable until the scanner returns `clean`.

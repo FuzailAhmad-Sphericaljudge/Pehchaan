@@ -42,7 +42,8 @@ export type Dashboard = {
 };
 
 export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string };
-export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; text: string; createdAt: string }[]; evidence: { id: string; fileName: string; type: string; createdAt: string }[]; auditLog: { id: string; action: string; actor: string; timestamp: string; details: Record<string, unknown> }[] };
+export type Evidence = { id: string; fileName: string; type: string; mimeType?: string; sizeBytes?: number; checksum?: string | null; scanStatus?: string; available?: boolean; createdAt: string };
+export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; text: string; createdAt: string }[]; evidence: Evidence[]; auditLog: { id: string; action: string; actor: string; timestamp: string; details: Record<string, unknown> }[] };
 
 type ApiError = Error & { offline?: boolean; status?: number };
 
@@ -115,6 +116,12 @@ export const ngoApi = {
   updateCase: (caseId: string, body: Record<string, unknown>) => request<{ case: NgoCase }>(`/api/ngo/cases/${encodeURIComponent(caseId)}`, { ...json(body), method: "PATCH" }),
   addNote: (caseId: string, body: { author: string; text: string }) => request<{ note: CaseDetail["notes"][number] }>(`/api/ngo/cases/${encodeURIComponent(caseId)}/notes`, json(body)),
   audit: () => request<{ entries: CaseDetail["auditLog"] }>("/api/ngo/audit-log"),
+};
+
+export const evidenceApi = {
+  createUpload: (caseId: string, body: Record<string, unknown>) => request<{ evidence: Evidence; uploadUrl: string }>(`/api/cases/${encodeURIComponent(caseId)}/evidence`, json(body)),
+  complete: (caseId: string, evidenceId: string, checksum: string) => request<{ evidence: Evidence }>(`/api/cases/${encodeURIComponent(caseId)}/evidence/${encodeURIComponent(evidenceId)}/complete`, json({ checksum })),
+  downloadUrl: (evidenceId: string) => request<{ url: string }>(`/api/evidence/${encodeURIComponent(evidenceId)}/download-url`),
 };
 
 export type { ApiError };

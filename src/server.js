@@ -1,4 +1,5 @@
 import http from 'node:http';
+import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
@@ -26,6 +27,12 @@ const sessions = new Map();
 const rateBuckets = new Map();
 const revokedAccounts = new Set();
 let stateLoaded = false;
+const evidenceBucket = process.env.SUPABASE_EVIDENCE_BUCKET || 'pehchaan-evidence';
+const allowedEvidenceTypes = new Map([
+  ['image/jpeg', 'jpg'], ['image/png', 'png'], ['application/pdf', 'pdf'],
+]);
+const maxEvidenceBytes = 10 * 1024 * 1024;
+const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
@@ -235,6 +242,26 @@ function getWorkerDashboard(workerId) {
 
 function findCase(caseId) {
   return cases.find((item) => item.id === caseId);
+}
+
+function evidenceAccess(actor, targetCase, evidence) {
+  return actor.role === 'worker'
+    ? targetCase.workerId === actor.sub && evidence.uploaderId === actor.sub
+    : (actor.role === 'ngo_admin' || targetCase.owner === actor.sub);
+}
+
+async function supabaseStorage(pathname, method, body = null) {
+  const base = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error('Secure evidence storage is not configured.');
+  const response = await fetch(`${base.replace(/\/$/, '')}/storage/v1${pathname}`, {
+    method,
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(String(payload.message || payload.error || 'Storage request failed.'));
+  return payload;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -537,30 +564,110 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && pathname.startsWith('/api/cases/') && pathname.endsWith('/evidence')) {
-    if (!authenticate(req, res, ['ngo_caseworker', 'ngo_admin'])) return;
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
     try {
       const caseId = pathname.split('/')[3];
-      if (!findCase(caseId)) {
+      const targetCase = findCase(caseId);
+      if (!targetCase || (actor.role === 'worker' && targetCase.workerId !== actor.sub) || (actor.role !== 'worker' && targetCase.owner !== actor.sub && actor.role !== 'ngo_admin')) {
         jsonResponse(res, 404, { error: 'Case not found.' });
         return;
       }
 
       const body = await parseBody(req);
+      const mimeType = String(body.mimeType || '');
+      const extension = allowedEvidenceTypes.get(mimeType);
+      const sizeBytes = Number(body.sizeBytes || 0);
+      if (!extension || !Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > maxEvidenceBytes) {
+        jsonResponse(res, 400, { error: 'Only JPG, PNG, and PDF files up to 10MB are allowed.' });
+        return;
+      }
+      if (evidenceItems.filter((item) => item.caseId === caseId).length >= maxEvidencePerCase) {
+        jsonResponse(res, 409, { error: 'This case has reached its evidence limit.' });
+        return;
+      }
       const evidence = {
         id: randomUUID(),
         caseId,
-        type: body.type || 'document',
+        type: body.type || extension,
         fileName: body.fileName || 'evidence',
-        storageKey: body.storageKey || `private/${randomUUID()}`,
-        checksum: body.checksum || null,
+        storageKey: `cases/${caseId}/${randomUUID()}.${extension}`,
+        checksum: null,
+        uploaderId: actor.sub,
+        mimeType,
+        sizeBytes,
+        consent: { purpose: body.consentPurpose || 'case_support', audience: body.consentAudience || 'assigned_caseworkers' },
+        retentionUntil: body.retentionUntil || null,
+        scanStatus: 'pending_upload',
+        uploadedAt: null,
+        available: false,
         createdAt: new Date().toISOString(),
       };
+      const signed = await supabaseStorage(`/object/upload/sign/${encodeURIComponent(evidenceBucket)}/${evidence.storageKey}`, 'POST', { upsert: false });
       evidenceItems.push(evidence);
-      makeAudit('evidence_uploaded', 'caseworker', caseId, { evidence });
-      jsonResponse(res, 201, { evidence });
+      makeAudit('evidence_upload_url_created', actor.sub, caseId, { evidenceId: evidence.id });
+      jsonResponse(res, 201, { evidence, uploadUrl: signed.signedURL || signed.url, token: signed.token || null });
       return;
     } catch (error) {
       jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
+      return;
+    }
+
+    if (req.method === 'POST' && pathname.match(/^\/api\/cases\/[^/]+\/evidence\/[^/]+\/complete$/)) {
+      const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+      if (!actor) return;
+      try {
+        const parts = pathname.split('/');
+        const caseId = parts[3];
+        const evidenceId = parts[5];
+        const targetCase = findCase(caseId);
+        const evidence = evidenceItems.find((item) => item.id === evidenceId && item.caseId === caseId);
+        if (!targetCase || !evidence || !evidenceAccess(actor, targetCase, evidence)) {
+          jsonResponse(res, 404, { error: 'Evidence not found.' });
+          return;
+        }
+        const body = await parseBody(req);
+        const checksum = String(body.checksum || '').trim();
+        if (!/^[a-f0-9]{64}$/i.test(checksum)) {
+          jsonResponse(res, 400, { error: 'A SHA-256 checksum is required.' });
+          return;
+        }
+        evidence.checksum = checksum.toLowerCase();
+        evidence.uploadedAt = new Date().toISOString();
+        evidence.scanStatus = 'pending_scan';
+        if (process.env.CLAMAV_URL) {
+          const scan = await fetch(process.env.CLAMAV_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ bucket: evidenceBucket, key: evidence.storageKey, checksum: evidence.checksum }) });
+          if (!scan.ok) throw new Error('Malware scan service is unavailable.');
+          const result = await scan.json();
+          evidence.scanStatus = result.clean === true ? 'clean' : 'quarantined';
+          evidence.available = evidence.scanStatus === 'clean';
+        }
+        makeAudit('evidence_uploaded', actor.sub, caseId, { evidenceId: evidence.id, scanStatus: evidence.scanStatus });
+        jsonResponse(res, 200, { evidence });
+      } catch (error) {
+        jsonResponse(res, 400, { error: error.message || 'Evidence could not be completed.' });
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && pathname.startsWith('/api/evidence/') && pathname.endsWith('/download-url')) {
+      const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+      if (!actor) return;
+      const evidenceId = pathname.split('/')[3];
+      const evidence = evidenceItems.find((item) => item.id === evidenceId);
+      const targetCase = evidence && findCase(evidence.caseId);
+      if (!evidence || !targetCase || !evidenceAccess(actor, targetCase, evidence) || !evidence.available || evidence.scanStatus !== 'clean') {
+        jsonResponse(res, 404, { error: 'Evidence is not available.' });
+        return;
+      }
+      try {
+        const signed = await supabaseStorage(`/object/sign/${encodeURIComponent(evidenceBucket)}`, 'POST', { paths: [evidence.storageKey], expiresIn: 300 });
+        const signedUrl = signed?.[0]?.signedURL || signed?.[0]?.signedUrl || signed.signedURL;
+        if (!signedUrl) throw new Error('Storage did not return a download URL.');
+        jsonResponse(res, 200, { url: signedUrl, expiresIn: 300 });
+      } catch (error) {
+        jsonResponse(res, 503, { error: error.message || 'Evidence download is unavailable.' });
+      }
       return;
     }
   }
@@ -743,7 +850,7 @@ async function start() {
     for (const row of state.checkins) checkIns.push({ id: row.id, workerId: row.worker_id, status: row.status, hazard: row.hazard, locationConsent: row.location_consent, location: row.location, notes: row.notes, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.notes) caseNotes.push({ id: row.id, caseId: row.case_id, author: row.author, text: row.body, createdAt: new Date(row.created_at).toISOString() });
-    for (const row of state.evidence) evidenceItems.push({ id: row.id, caseId: row.case_id, type: row.evidence_type, fileName: row.file_name, storageKey: row.storage_key, checksum: row.checksum, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.evidence) evidenceItems.push({ id: row.id, caseId: row.case_id, type: row.evidence_type, fileName: row.file_name, storageKey: row.storage_key, checksum: row.checksum, createdAt: new Date(row.created_at).toISOString(), uploaderId: row.uploader_id, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes), consent: row.consent, retentionUntil: row.retention_until, scanStatus: row.scan_status, uploadedAt: row.uploaded_at, available: row.available });
     for (const row of state.alerts) alerts.push({ id: row.id, caseId: row.case_id, channel: row.channel, recipient: row.recipient, status: row.status, acknowledgedAt: row.acknowledged_at ? new Date(row.acknowledged_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.audits) auditLog.push({ id: row.id, action: row.action, actor: row.actor, target: row.target, details: row.details, timestamp: new Date(row.created_at).toISOString() });
     for (const row of state.otp) otpChallenges.set(row.phone, { workerId: row.worker_id, otpHash: row.otp_hash, expiresAt: new Date(row.expires_at).getTime(), attempts: row.attempts });

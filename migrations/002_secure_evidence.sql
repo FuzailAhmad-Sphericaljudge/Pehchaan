@@ -1,0 +1,10 @@
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS uploader_id TEXT;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS mime_type TEXT NOT NULL DEFAULT 'application/octet-stream';
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS size_bytes BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS consent JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS retention_until TIMESTAMPTZ;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS scan_status TEXT NOT NULL DEFAULT 'pending';
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS available BOOLEAN NOT NULL DEFAULT false;
+CREATE INDEX IF NOT EXISTS evidence_uploader_id_idx ON evidence(uploader_id);
+CREATE INDEX IF NOT EXISTS evidence_scan_status_idx ON evidence(scan_status);

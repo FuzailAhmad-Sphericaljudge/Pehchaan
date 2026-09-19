@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import pg from 'pg';
 
 const { Pool } = pg;
@@ -77,7 +78,10 @@ export async function saveState(state) {
       await client.query('INSERT INTO notes (id, case_id, author, body, created_at) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING', [item.id, item.caseId, item.author, item.text, item.createdAt]);
     }
     for (const item of state.evidenceItems) {
-      await client.query('INSERT INTO evidence (id, case_id, evidence_type, file_name, storage_key, checksum, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING', [item.id, item.caseId, item.type, item.fileName, item.storageKey, item.checksum, item.createdAt]);
+      await client.query(`INSERT INTO evidence (id, case_id, evidence_type, file_name, storage_key, checksum, created_at, uploader_id, mime_type, size_bytes, consent, retention_until, scan_status, uploaded_at, available)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        ON CONFLICT (id) DO UPDATE SET checksum=$6,uploaded_at=$14,scan_status=$13,available=$15`,
+        [item.id, item.caseId, item.type, item.fileName, item.storageKey, item.checksum, item.createdAt, item.uploaderId, item.mimeType, item.sizeBytes, item.consent, item.retentionUntil, item.scanStatus, item.uploadedAt, item.available]);
     }
     for (const item of state.alerts) {
       await client.query('INSERT INTO alerts (id, case_id, channel, recipient, status, acknowledged_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO UPDATE SET status=$5,acknowledged_at=$6', [item.id, item.caseId, item.channel, item.recipient, item.status, item.acknowledgedAt, item.createdAt]);
