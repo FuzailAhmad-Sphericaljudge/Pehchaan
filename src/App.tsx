@@ -46,6 +46,10 @@ function getSession(): Session | null {
   } catch { return null; }
 }
 
+function t_public(lang: Language, key: "how" | "safety" | "about" | "join") {
+  return labels[lang][key];
+}
+
 function relationshipLabel(rel?: WorkRelationship | null) {
   if (!rel) return "";
   return [rel.label, rel.employerName, rel.siteName].filter(Boolean).join(" · ");
