@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -30,8 +30,9 @@ export async function loadState() {
     query('SELECT * FROM otp_challenges'),
     query('SELECT * FROM sessions'),
     query('SELECT account_id FROM revoked_accounts'),
+    query('SELECT * FROM worksites'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows };
 }
 
 export async function saveState(state) {
@@ -104,6 +105,9 @@ export async function saveState(state) {
     }
     for (const accountId of state.revokedAccounts) {
       await client.query('INSERT INTO revoked_accounts (account_id) VALUES ($1) ON CONFLICT (account_id) DO NOTHING', [accountId]);
+    }
+    for (const item of state.worksites || []) {
+      await client.query('INSERT INTO worksites (id, employer_id, name, registration_code, verified, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING', [item.id, item.employerId, item.name, item.registrationCode, item.verified, item.createdAt]);
     }
     await client.query('COMMIT');
   } catch (error) {

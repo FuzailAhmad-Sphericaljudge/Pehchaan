@@ -59,6 +59,15 @@ Regional UI strings are marked for native-speaker review before production
 rollout. Free-text complaint descriptions are intentionally not machine
 translated in this phase.
 
+## Trust and transparency
+
+Verified employer accounts can create worksite QR codes from the employer
+portal. A logged-in worker scanning a QR links that verified worksite to their
+own profile; the link is then available to wage and complaint records without
+exposing worker data publicly. Employer compliance is shown only as an
+aggregate response signal. Workers see a simple four-stage timeline for their
+own cases, while NGO notes and evidence remain private.
+
 ## Secure evidence storage
 
 Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,

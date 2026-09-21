@@ -112,6 +112,7 @@ export const employerApi = {
   dashboard: () => request<{ records: EmployerRecord[]; compliance: { flagged: number; responded: number; responseRate: number } }>("/api/employer/dashboard"),
   respond: (id: string, response: string) => request<{ record: EmployerRecord }>(`/api/employer/wage-records/${encodeURIComponent(id)}`, { ...json({ response }), method: "PATCH" }),
   interest: (body: Record<string, unknown>) => request<{ submitted: boolean }>("/api/employer/interest", json(body)),
+  createWorksite: (name: string) => request<{ worksite: { id: string; name: string; registrationCode: string; verified: boolean }; qrPayload: string; qrDataUrl: string }>("/api/employer/worksites", json({ name })),
 };
 
 export const workerApi = {
@@ -119,6 +120,7 @@ export const workerApi = {
   addWage: (body: Record<string, unknown>) => request<{ wageEntry: WageEntry }>("/api/wage-entries", json(body)),
   checkIn: (body: Record<string, unknown>) => request<{ checkIn: CheckIn }>("/api/check-ins", json(body)),
   createCase: (body: Record<string, unknown>) => request<{ case: WorkerCase }>("/api/cases", json(body)),
+  linkWorksite: (registrationCode: string) => request<{ worksite: { id: string; name: string; verified: boolean } }>("/api/worksites/link", json({ registrationCode })),
 };
 
 export const ngoApi = {

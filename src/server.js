@@ -3,6 +3,7 @@ import 'dotenv/config';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
+import QRCode from 'qrcode';
 import { closeDatabase, databaseConfigured, loadState, saveState } from './db.js';
 
 const PORT = Number(process.env.PORT || 5000);
@@ -24,6 +25,7 @@ const auditLog = [];
 const alerts = [];
 const employerWageRecords = [];
 const employerInterest = [];
+const worksites = new Map();
 const whatsappSessions = new Map();
 const alertAckWindowMs = Number(process.env.ALERT_ACK_WINDOW_MINUTES || 15) * 60 * 1000;
 const emergencyDisclaimer = 'Pehchaan does not replace emergency services, police, courts, or labour departments. It helps workers and trusted organizations organize information and access support more effectively.';
@@ -41,7 +43,7 @@ const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -719,7 +721,39 @@ const server = http.createServer(async (req, res) => {
     if (!actor) return;
     const records = employerWageRecords.filter((record) => record.employerId === actor.sub && record.workerConsent === true).map(({ workerId, workerConsent, ...record }) => record);
     const acknowledged = records.filter((record) => record.status === 'responded').length;
-    jsonResponse(res, 200, { records, compliance: { flagged: records.filter((record) => record.status === 'disputed').length, responded: acknowledged, responseRate: records.length ? Math.round((acknowledged / records.length) * 100) : 100 } });
+    const flagged = records.filter((record) => record.status === 'disputed').length;
+    const responseRate = records.length ? Math.round((acknowledged / records.length) * 100) : 100;
+    jsonResponse(res, 200, { records, compliance: { flagged, responded: acknowledged, responseRate, badge: responseRate >= 90 ? 'Responds promptly' : responseRate >= 60 ? 'Responds to flagged issues' : 'Building response record' } });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/employer/worksites') {
+    const actor = authenticate(req, res, ['employer']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const name = String(body.name || '').trim();
+    if (!name) { jsonResponse(res, 400, { error: 'Worksite name is required.' }); return; }
+    const worksite = { id: randomUUID(), employerId: actor.sub, name, registrationCode: `site-${randomUUID()}`, verified: true, createdAt: new Date().toISOString() };
+    worksites.set(worksite.registrationCode, worksite);
+    const qrPayload = `${process.env.PUBLIC_APP_URL || 'http://localhost:5173'}/worksite/${worksite.registrationCode}`;
+    const qrDataUrl = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', margin: 1, width: 280 });
+    makeAudit('worksite_qr_created', actor.sub, worksite.id, { name });
+    jsonResponse(res, 201, { worksite: { id: worksite.id, name, registrationCode: worksite.registrationCode, verified: true }, qrPayload, qrDataUrl });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/worksites/link') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const code = String(body.registrationCode || '').trim();
+    const worksite = worksites.get(code);
+    if (!worksite || !worksite.verified) { jsonResponse(res, 404, { error: 'Verified worksite not found.' }); return; }
+    const worker = Array.from(workers.values()).find((item) => item.id === actor.sub);
+    if (!worker) { jsonResponse(res, 404, { error: 'Worker not found.' }); return; }
+    worker.profile = { ...worker.profile, worksite: worksite.name, worksiteId: worksite.id, worksiteLinkedAt: new Date().toISOString() };
+    makeAudit('worksite_linked', actor.sub, worksite.id, { source: 'qr' });
+    jsonResponse(res, 200, { worksite: { id: worksite.id, name: worksite.name, verified: true } });
     return;
   }
 
@@ -1254,6 +1288,7 @@ async function start() {
     for (const row of state.otp) otpChallenges.set(row.phone, { workerId: row.worker_id, otpHash: row.otp_hash, expiresAt: new Date(row.expires_at).getTime(), attempts: row.attempts });
     for (const row of state.sessions) sessions.set(row.id, { subject: row.subject, role: row.role, kind: row.kind, createdAt: new Date(row.created_at).getTime() });
     for (const row of state.revoked) revokedAccounts.add(row.account_id);
+    for (const row of state.worksites || []) worksites.set(row.registration_code, { id: row.id, employerId: row.employer_id, name: row.name, registrationCode: row.registration_code, verified: row.verified, createdAt: new Date(row.created_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {
