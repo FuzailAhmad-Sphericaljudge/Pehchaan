@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -35,8 +35,9 @@ export async function loadState() {
     query('SELECT * FROM minimum_wage_rates'),
     query('SELECT * FROM welfare_schemes'),
     query('SELECT * FROM work_relationships'),
+    query("SELECT * FROM trusted_contacts WHERE status != 'removed'"),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows };
 }
 
 export async function saveState(state) {
@@ -124,6 +125,12 @@ export async function saveState(state) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (id) DO UPDATE SET label=$3,employer_name=$4,site_name=$5,category=$6,started_on=$7,ended_on=$8,active=$9`,
         [item.id, item.workerId, item.label, item.employerName, item.siteName, item.category, item.startedOn, item.endedOn, item.active, item.createdAt]);
+    }
+    for (const item of state.trustedContacts || []) {
+      await client.query(`INSERT INTO trusted_contacts (id, worker_id, name, phone, relationship_label, status, confirmed_at, last_test_sent_at, created_at, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (id) DO UPDATE SET name=$3, phone=$4, relationship_label=$5, status=$6, confirmed_at=$7, last_test_sent_at=$8, updated_at=$10`,
+        [item.id, item.workerId, item.name, item.phone, item.relationshipLabel || null, item.status, item.confirmedAt ? new Date(item.confirmedAt) : null, item.lastTestSentAt ? new Date(item.lastTestSentAt) : null, item.createdAt, new Date()]);
     }
     for (const item of state.welfareSchemes || []) {
       await client.query(`INSERT INTO welfare_schemes (id, slug, name, description, eligibility, registration_instructions, official_url, languages, states, worker_categories, min_age, max_age, active, updated_at)
