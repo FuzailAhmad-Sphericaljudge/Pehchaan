@@ -1,0 +1,1 @@
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS debt_bondage JSONB;
