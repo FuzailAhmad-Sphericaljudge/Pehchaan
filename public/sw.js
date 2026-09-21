@@ -1,4 +1,4 @@
-const CACHE = "pehchaan-shell-v1";
+const CACHE = "pehchaan-shell-v2";
 const SHELL = ["/", "/index.html", "/manifest.json", "/icon-192.svg", "/icon-512.svg"];
 
 self.addEventListener("install", (event) => {
@@ -6,12 +6,19 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))).then(() => self.clients.claim()),
+  );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  if (new URL(event.request.url).pathname.startsWith("/api/")) return;
+  const pathname = new URL(event.request.url).pathname;
+  if (pathname.startsWith("/api/")) return;
+  if (event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request).catch(() => caches.match("/index.html")));
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
       if (event.request.url.startsWith(self.location.origin)) {
