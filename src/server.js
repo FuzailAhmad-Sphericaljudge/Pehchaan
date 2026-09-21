@@ -30,6 +30,7 @@ const worksites = new Map();
 const legalDocuments = new Map();
 const minimumWages = new Map();
 const welfareSchemes = new Map();
+const workRelationships = new Map();
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const smsSessions = new Map();
@@ -49,7 +50,7 @@ const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -580,11 +581,32 @@ function getWorkerDashboard(workerId) {
     };
   }
 
+  function relationshipsFor(workerId) {
+    return Array.from(workRelationships.values())
+      .filter((item) => item.workerId === workerId)
+      .sort((a, b) => (a.active === b.active ? String(b.createdAt).localeCompare(String(a.createdAt)) : a.active ? -1 : 1));
+  }
+
+  function incomeByRelationship(workerId) {
+    const totals = new Map();
+    let combined = 0;
+    for (const entry of wageEntries) {
+      if (entry.workerId !== workerId) continue;
+      const key = entry.relationshipId || 'unlinked';
+      const amount = Number(entry.amount) || 0;
+      totals.set(key, (totals.get(key) || 0) + amount);
+      combined += amount;
+    }
+    return { combined, relationships: Array.from(totals.entries()).map(([relationshipId, total]) => ({ relationshipId, total })) };
+  }
+
   return {
     worker,
     wageEntries: wageEntries.filter((entry) => entry.workerId === workerId),
     checkIns: checkIns.filter((entry) => entry.workerId === workerId),
     cases: cases.filter((entry) => entry.workerId === workerId),
+    workRelationships: relationshipsFor(workerId),
+    incomeByRelationship: incomeByRelationship(workerId),
     schemes: matchingSchemes(worker.profile).map((scheme) => localizeScheme(scheme, worker.language)),
   };
 }
@@ -969,6 +991,68 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname === '/api/work-relationships') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    jsonResponse(res, 200, { relationships: getWorkerDashboard(actor.sub).workRelationships });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/work-relationships') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const label = String(body.label || '').trim();
+    if (!label) {
+      jsonResponse(res, 400, { error: 'A label is required, for example "Evening delivery gig".' });
+      return;
+    }
+    const relationship = {
+      id: randomUUID(),
+      workerId: actor.sub,
+      label,
+      employerName: String(body.employerName || '').trim() || null,
+      siteName: String(body.siteName || '').trim() || null,
+      category: String(body.category || '').trim() || null,
+      startedOn: String(body.startedOn || '').trim() || null,
+      endedOn: null,
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    workRelationships.set(relationship.id, relationship);
+    makeAudit('work_relationship_created', actor.sub, relationship.id, { label });
+    jsonResponse(res, 201, { relationship });
+    return;
+  }
+
+  if (req.method === 'PATCH' && pathname.startsWith('/api/work-relationships/')) {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const relationship = workRelationships.get(String(pathname.split('/').pop() || ''));
+    if (!relationship || relationship.workerId !== actor.sub) {
+      jsonResponse(res, 404, { error: 'Work relationship not found.' });
+      return;
+    }
+    if (body.label !== undefined) relationship.label = String(body.label).trim() || relationship.label;
+    if (body.employerName !== undefined) relationship.employerName = String(body.employerName).trim() || null;
+    if (body.siteName !== undefined) relationship.siteName = String(body.siteName).trim() || null;
+    if (body.category !== undefined) relationship.category = String(body.category).trim() || null;
+    if (body.startedOn !== undefined) relationship.startedOn = String(body.startedOn).trim() || null;
+    if (body.active === false) {
+      relationship.active = false;
+      relationship.endedOn = new Date().toISOString().slice(0, 10);
+    }
+    if (body.active === true) {
+      relationship.active = true;
+      relationship.endedOn = null;
+    }
+    workRelationships.set(relationship.id, relationship);
+    makeAudit('work_relationship_updated', actor.sub, relationship.id, { label: relationship.label, active: relationship.active });
+    jsonResponse(res, 200, { relationship });
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/ngo/schemes') {
     const actor = authenticate(req, res, ['ngo_admin']);
     if (!actor) return;
@@ -1124,6 +1208,14 @@ const server = http.createServer(async (req, res) => {
         jsonResponse(res, 403, { error: 'You can only add your own wage entries.' });
         return;
       }
+      const relationshipId = body.relationshipId ? String(body.relationshipId) : null;
+      if (relationshipId) {
+        const relationship = workRelationships.get(relationshipId);
+        if (!relationship || relationship.workerId !== actor.sub) {
+          jsonResponse(res, 400, { error: 'That work relationship does not exist for this account.' });
+          return;
+        }
+      }
       const wageEntry = {
         id: randomUUID(),
         workerId: String(body.workerId || ''),
@@ -1133,6 +1225,7 @@ const server = http.createServer(async (req, res) => {
         deductions: Number(body.deductions || 0),
         overtime: Number(body.overtime || 0),
         proofFileId: body.proofFileId || null,
+        relationshipId,
         createdAt: new Date().toISOString(),
       };
 
@@ -1201,6 +1294,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const aiTriage = buildAiTriage(body.summary, { immediateDanger: Boolean(body.immediateDanger), happeningNow: Boolean(body.happeningNow), type: body.type || 'wage_theft' });
+      const caseRelationshipId = body.relationshipId ? String(body.relationshipId) : null;
+      if (caseRelationshipId) {
+        const relationship = workRelationships.get(caseRelationshipId);
+        if (!relationship || relationship.workerId !== actor.sub) {
+          jsonResponse(res, 400, { error: 'That work relationship does not exist for this account.' });
+          return;
+        }
+      }
       const newCase = {
         id: `case-${Date.now()}`,
         workerId: String(body.workerId || ''),
@@ -1211,6 +1312,7 @@ const server = http.createServer(async (req, res) => {
         status: 'new',
         summary: body.summary || '',
         owner: body.owner || null,
+        relationshipId: caseRelationshipId,
         aiTriage,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -1597,9 +1699,9 @@ async function start() {
         createdAt: new Date(row.created_at).toISOString(),
       });
     }
-    for (const row of state.wages) wageEntries.push({ id: row.id, workerId: row.worker_id, date: new Date(row.entry_date).toISOString(), type: row.entry_type, amount: Number(row.amount), deductions: Number(row.deductions), overtime: Number(row.overtime), proofFileId: row.proof_file_id, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.wages) wageEntries.push({ id: row.id, workerId: row.worker_id, date: new Date(row.entry_date).toISOString(), type: row.entry_type, amount: Number(row.amount), deductions: Number(row.deductions), overtime: Number(row.overtime), proofFileId: row.proof_file_id, relationshipId: row.relationship_id || null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.checkins) checkIns.push({ id: row.id, workerId: row.worker_id, status: row.status, hazard: row.hazard, locationConsent: row.location_consent, location: row.location, notes: row.notes, createdAt: new Date(row.created_at).toISOString() });
-    for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, immediateDanger: row.immediate_danger, happeningNow: row.happening_now, aiTriage: row.ai_triage || buildAiTriage(row.summary, { immediateDanger: row.immediate_danger, happeningNow: row.happening_now, type: row.type }), createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
+    for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, immediateDanger: row.immediate_danger, happeningNow: row.happening_now, aiTriage: row.ai_triage || buildAiTriage(row.summary, { immediateDanger: row.immediate_danger, happeningNow: row.happening_now, type: row.type }), relationshipId: row.relationship_id || null, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.notes) caseNotes.push({ id: row.id, caseId: row.case_id, author: row.author, text: row.body, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.evidence) evidenceItems.push({ id: row.id, caseId: row.case_id, type: row.evidence_type, fileName: row.file_name, storageKey: row.storage_key, checksum: row.checksum, createdAt: new Date(row.created_at).toISOString(), uploaderId: row.uploader_id, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes), consent: row.consent, retentionUntil: row.retention_until, scanStatus: row.scan_status, uploadedAt: row.uploaded_at, available: row.available });
     for (const row of state.audits) auditLog.push({ id: row.id, action: row.action, actor: row.actor, target: row.target, details: row.details, timestamp: new Date(row.created_at).toISOString() });
@@ -1610,6 +1712,7 @@ async function start() {
     for (const row of state.worksites || []) worksites.set(row.registration_code, { id: row.id, employerId: row.employer_id, name: row.name, registrationCode: row.registration_code, verified: row.verified, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.minimumWages || []) minimumWages.set(`${row.state.toLowerCase()}::${row.worker_category}`, { id: row.id, state: row.state, workerCategory: row.worker_category, dailyAmount: Number(row.daily_amount), currency: row.currency, effectiveFrom: row.effective_from, sourceNote: row.source_note, updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.welfareSchemes || []) welfareSchemes.set(row.slug, { id: row.id, slug: row.slug, name: row.name, description: row.description, eligibility: row.eligibility, registrationInstructions: row.registration_instructions, officialUrl: row.official_url, languages: row.languages || {}, states: row.states || ['All India'], workerCategories: row.worker_categories || [], minAge: row.min_age === null ? null : Number(row.min_age), maxAge: row.max_age === null ? null : Number(row.max_age), active: row.active, updatedAt: new Date(row.updated_at).toISOString() });
+    for (const row of state.workRelationships || []) workRelationships.set(row.id, { id: row.id, workerId: row.worker_id, label: row.label, employerName: row.employer_name, siteName: row.site_name, category: row.category, startedOn: row.started_on, endedOn: row.ended_on, active: row.active, createdAt: new Date(row.created_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {

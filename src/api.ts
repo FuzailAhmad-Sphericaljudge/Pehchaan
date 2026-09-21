@@ -15,8 +15,23 @@ export type WageEntry = {
   amount: number;
   deductions: number;
   overtime: number;
+  relationshipId?: string | null;
   fairPay?: { status: string; message: string; nextStep: string; dailyReference?: number; state?: string; workerCategory?: string };
 };
+
+export type WorkRelationship = {
+  id: string;
+  label: string;
+  employerName: string | null;
+  siteName: string | null;
+  category: string | null;
+  startedOn: string | null;
+  endedOn: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type IncomeByRelationship = { combined: number; relationships: { relationshipId: string; total: number }[] };
 
 export type CheckIn = {
   id: string;
@@ -33,6 +48,7 @@ export type WorkerCase = {
   priority: string;
   status: string;
   summary: string;
+  relationshipId?: string | null;
   createdAt: string;
   aiTriage?: AiTriage;
   aiSummary?: string;
@@ -43,6 +59,8 @@ export type Dashboard = {
   wageEntries: WageEntry[];
   checkIns: CheckIn[];
   cases: WorkerCase[];
+  workRelationships?: WorkRelationship[];
+  incomeByRelationship?: IncomeByRelationship;
   schemes?: WelfareScheme[];
 };
 export type WelfareScheme = { id: string; slug: string; name: string; description: string; eligibility: string; registrationInstructions: string; officialUrl?: string | null; languages?: Record<string, { name?: string; description?: string; eligibility?: string; registrationInstructions?: string }>; };
@@ -125,6 +143,10 @@ export const workerApi = {
   createCase: (body: Record<string, unknown>) => request<{ case: WorkerCase }>("/api/cases", json(body)),
   linkWorksite: (registrationCode: string) => request<{ worksite: { id: string; name: string; verified: boolean } }>("/api/worksites/link", json({ registrationCode })),
   updateProfile: (body: Record<string, unknown>) => request<{ worker: Worker }>("/api/worker/profile", { ...json(body), method: "PATCH" }),
+};
+export const workRelationshipApi = {
+  create: (body: Record<string, unknown>) => request<{ relationship: WorkRelationship }>("/api/work-relationships", json(body)),
+  update: (id: string, body: Record<string, unknown>) => request<{ relationship: WorkRelationship }>(`/api/work-relationships/${encodeURIComponent(id)}`, { ...json(body), method: "PATCH" }),
 };
 export type MinimumWageRate = { id: string; state: string; workerCategory: string; dailyAmount: number; currency: string; effectiveFrom: string; sourceNote: string; updatedAt: string };
 export const minimumWageApi = {
