@@ -28,6 +28,7 @@ const employerWageRecords = [];
 const employerInterest = [];
 const worksites = new Map();
 const legalDocuments = new Map();
+const minimumWages = new Map();
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const smsSessions = new Map();
@@ -47,7 +48,7 @@ const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -517,6 +518,32 @@ function getWorkerDashboard(workerId) {
     return null;
   }
 
+  function wageRateFor(worker) {
+    const state = String(worker?.profile?.state || worker?.profile?.originState || '').trim();
+    const category = String(worker?.profile?.workerCategory || 'unskilled_construction').trim();
+    return minimumWages.get(`${state.toLowerCase()}::${category}`) || minimumWages.get(`all india::${category}`) || null;
+  }
+
+  function assessWage(worker, wageEntry) {
+    const rate = wageRateFor(worker);
+    if (!rate) return { status: 'not_available', message: 'No reference rate is set for your state and work category yet.', nextStep: 'You can continue recording your wage or ask an NGO caseworker to update your details.' };
+    const below = Number(wageEntry.amount) < Number(rate.dailyAmount);
+    return {
+      status: below ? 'may_be_below_reference' : 'at_or_above_reference',
+      dailyReference: Number(rate.dailyAmount),
+      state: rate.state,
+      workerCategory: rate.workerCategory,
+      effectiveFrom: rate.effectiveFrom,
+      sourceNote: rate.sourceNote,
+      message: below ? 'This looks below the standard minimum wage reference for your state/category.' : 'This wage is at or above the current reference rate for your state/category.',
+      nextStep: 'Would you like to file a complaint about this?',
+    };
+  }
+
+  function serializeWageRate(rate) {
+    return { id: rate.id, state: rate.state, workerCategory: rate.workerCategory, dailyAmount: Number(rate.dailyAmount), currency: rate.currency, effectiveFrom: rate.effectiveFrom, sourceNote: rate.sourceNote, updatedAt: rate.updatedAt };
+  }
+
   return {
     worker,
     wageEntries: wageEntries.filter((entry) => entry.workerId === workerId),
@@ -865,6 +892,33 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname === '/api/minimum-wages') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { rates: Array.from(minimumWages.values()).map(serializeWageRate) });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/ngo/minimum-wages') {
+    const actor = authenticate(req, res, ['ngo_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const state = String(body.state || '').trim();
+    const workerCategory = String(body.workerCategory || '').trim();
+    const dailyAmount = Number(body.dailyAmount);
+    const effectiveFrom = String(body.effectiveFrom || '').trim();
+    if (!state || !workerCategory || !Number.isFinite(dailyAmount) || dailyAmount <= 0 || !effectiveFrom) {
+      jsonResponse(res, 400, { error: 'State, category, positive daily amount, and effective date are required.' });
+      return;
+    }
+    const key = `${state.toLowerCase()}::${workerCategory}`;
+    const rate = { id: minimumWages.get(key)?.id || randomUUID(), state, workerCategory, dailyAmount, currency: 'INR', effectiveFrom, sourceNote: String(body.sourceNote || 'Admin-maintained reference; verify with the latest state notification.'), updatedAt: new Date().toISOString() };
+    minimumWages.set(key, rate);
+    makeAudit('minimum_wage_rate_updated', actor.sub, rate.id, { state, workerCategory, dailyAmount, effectiveFrom });
+    jsonResponse(res, 200, { rate: serializeWageRate(rate) });
+    return;
+  }
+
   if (req.method === 'GET' && pathname === '/api/employer/dashboard') {
     const actor = authenticate(req, res, ['employer']);
     if (!actor) return;
@@ -1009,7 +1063,7 @@ const server = http.createServer(async (req, res) => {
 
       wageEntries.push(wageEntry);
       makeAudit('wage_entry_created', wageEntry.workerId, wageEntry.id, wageEntry);
-      jsonResponse(res, 201, { wageEntry });
+      jsonResponse(res, 201, { wageEntry, fairPay: assessWage(Array.from(workers.values()).find((item) => item.id === wageEntry.workerId), wageEntry) });
       return;
     } catch (error) {
       jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
@@ -1474,6 +1528,7 @@ async function start() {
     for (const row of state.sessions) sessions.set(row.id, { subject: row.subject, role: row.role, kind: row.kind, createdAt: new Date(row.created_at).getTime() });
     for (const row of state.revoked) revokedAccounts.add(row.account_id);
     for (const row of state.worksites || []) worksites.set(row.registration_code, { id: row.id, employerId: row.employer_id, name: row.name, registrationCode: row.registration_code, verified: row.verified, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.minimumWages || []) minimumWages.set(`${row.state.toLowerCase()}::${row.worker_category}`, { id: row.id, state: row.state, workerCategory: row.worker_category, dailyAmount: Number(row.daily_amount), currency: row.currency, effectiveFrom: row.effective_from, sourceNote: row.source_note, updatedAt: new Date(row.updated_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {

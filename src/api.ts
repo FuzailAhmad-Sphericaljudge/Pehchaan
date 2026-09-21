@@ -15,6 +15,7 @@ export type WageEntry = {
   amount: number;
   deductions: number;
   overtime: number;
+  fairPay?: { status: string; message: string; nextStep: string; dailyReference?: number; state?: string; workerCategory?: string };
 };
 
 export type CheckIn = {
@@ -117,10 +118,15 @@ export const employerApi = {
 
 export const workerApi = {
   dashboard: (workerId: string) => request<Dashboard>(`/api/workers/${encodeURIComponent(workerId)}`),
-  addWage: (body: Record<string, unknown>) => request<{ wageEntry: WageEntry }>("/api/wage-entries", json(body)),
+  addWage: (body: Record<string, unknown>) => request<{ wageEntry: WageEntry; fairPay: NonNullable<WageEntry["fairPay"]> }>("/api/wage-entries", json(body)),
   checkIn: (body: Record<string, unknown>) => request<{ checkIn: CheckIn }>("/api/check-ins", json(body)),
   createCase: (body: Record<string, unknown>) => request<{ case: WorkerCase }>("/api/cases", json(body)),
   linkWorksite: (registrationCode: string) => request<{ worksite: { id: string; name: string; verified: boolean } }>("/api/worksites/link", json({ registrationCode })),
+};
+export type MinimumWageRate = { id: string; state: string; workerCategory: string; dailyAmount: number; currency: string; effectiveFrom: string; sourceNote: string; updatedAt: string };
+export const minimumWageApi = {
+  list: () => request<{ rates: MinimumWageRate[] }>("/api/minimum-wages"),
+  upsert: (body: Record<string, unknown>) => request<{ rate: MinimumWageRate }>("/api/ngo/minimum-wages", json(body)),
 };
 
 export const ngoApi = {

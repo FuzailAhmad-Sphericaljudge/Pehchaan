@@ -88,6 +88,16 @@ the legal-advice disclaimer. Generation is review-first: worker-created
 previews cannot be downloaded until an NGO caseworker or admin has reviewed
 the document, and no document is sent automatically.
 
+## Minimum wage and fair-pay checker
+
+Worker wage entries are compared with an admin-maintained reference table by
+state and worker category. The worker sees a supportive informational message
+when an entry may be below the reference and is offered a choice to file a
+complaint; no complaint is created automatically. NGO Admins can update rates
+from `/ngo/minimum-wages`, including an effective date and source note. Seed
+rates are illustrative references and must be checked against the latest state
+notifications before production use.
+
 ## Secure evidence storage
 
 Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,
