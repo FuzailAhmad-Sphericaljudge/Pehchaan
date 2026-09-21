@@ -74,10 +74,10 @@ export async function saveState(state) {
     }
     for (const item of state.cases) {
       await client.query(
-        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, immediate_danger, happening_now, ai_triage, relationship_id, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,immediate_danger=$8,happening_now=$9,ai_triage=$10,relationship_id=$11,updated_at=$13`,
-        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.immediateDanger, item.happeningNow, item.aiTriage || {}, item.relationshipId, item.createdAt, item.updatedAt],
+        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, immediate_danger, happening_now, ai_triage, relationship_id, debt_bondage, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,immediate_danger=$8,happening_now=$9,ai_triage=$10,relationship_id=$11,debt_bondage=$12,updated_at=$14`,
+        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.immediateDanger, item.happeningNow, item.aiTriage || {}, item.relationshipId, item.debtBondage || null, item.createdAt, item.updatedAt],
       );
     }
     for (const item of state.caseNotes) {
