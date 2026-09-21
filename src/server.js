@@ -1009,6 +1009,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/auth/employer-login') {
     const body = await parseBody(req);
     if (body.email !== (process.env.EMPLOYER_DEMO_EMAIL || 'employer@pehchaan.org') || body.password !== (process.env.EMPLOYER_DEMO_PASSWORD || 'demo')) {
+      if (!checkRateLimit(`employer-login-failed:${req.socket.remoteAddress}`, 10, 15 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
+        return;
+      }
       jsonResponse(res, 401, { error: 'Invalid employer credentials.' });
       return;
     }
@@ -1021,6 +1025,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/auth/partner-login') {
     const body = await parseBody(req);
     if (body.email !== (process.env.PARTNER_DEMO_EMAIL || 'partner@pehchaan.org') || body.password !== (process.env.PARTNER_DEMO_PASSWORD || 'demo')) {
+      if (!checkRateLimit(`partner-login-failed:${req.socket.remoteAddress}`, 10, 15 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
+        return;
+      }
       jsonResponse(res, 401, { error: 'Invalid partner credentials.' });
       return;
     }
