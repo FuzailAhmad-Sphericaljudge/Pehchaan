@@ -124,6 +124,7 @@ export const workerApi = {
   checkIn: (body: Record<string, unknown>) => request<{ checkIn: CheckIn }>("/api/check-ins", json(body)),
   createCase: (body: Record<string, unknown>) => request<{ case: WorkerCase }>("/api/cases", json(body)),
   linkWorksite: (registrationCode: string) => request<{ worksite: { id: string; name: string; verified: boolean } }>("/api/worksites/link", json({ registrationCode })),
+  updateProfile: (body: Record<string, unknown>) => request<{ worker: Worker }>("/api/worker/profile", { ...json(body), method: "PATCH" }),
 };
 export type MinimumWageRate = { id: string; state: string; workerCategory: string; dailyAmount: number; currency: string; effectiveFrom: string; sourceNote: string; updatedAt: string };
 export const minimumWageApi = {

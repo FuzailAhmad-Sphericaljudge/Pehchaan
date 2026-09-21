@@ -563,12 +563,29 @@ function getWorkerDashboard(workerId) {
     });
   }
 
+  function localizeScheme(scheme, language = 'en') {
+    const override = scheme.languages && typeof scheme.languages === 'object' ? scheme.languages[language] : null;
+    if (!override || typeof override !== 'object') {
+      return { id: scheme.id, slug: scheme.slug, name: scheme.name, description: scheme.description, eligibility: scheme.eligibility, registrationInstructions: scheme.registrationInstructions, officialUrl: scheme.officialUrl, languages: scheme.languages };
+    }
+    return {
+      id: scheme.id,
+      slug: scheme.slug,
+      name: String(override.name || scheme.name),
+      description: String(override.description || scheme.description),
+      eligibility: String(override.eligibility || scheme.eligibility),
+      registrationInstructions: String(override.registrationInstructions || scheme.registrationInstructions),
+      officialUrl: scheme.officialUrl,
+      languages: scheme.languages,
+    };
+  }
+
   return {
     worker,
     wageEntries: wageEntries.filter((entry) => entry.workerId === workerId),
     checkIns: checkIns.filter((entry) => entry.workerId === workerId),
     cases: cases.filter((entry) => entry.workerId === workerId),
-    schemes: matchingSchemes(worker.profile),
+    schemes: matchingSchemes(worker.profile).map((scheme) => localizeScheme(scheme, worker.language)),
   };
 }
 
@@ -947,11 +964,7 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 404, { error: 'Worker not found.' });
       return;
     }
-    const schemes = getWorkerDashboard(actor.sub).schemes.map((scheme) => ({
-      id: scheme.id, slug: scheme.slug, name: scheme.name, description: scheme.description,
-      eligibility: scheme.eligibility, registrationInstructions: scheme.registrationInstructions,
-      officialUrl: scheme.officialUrl, languages: scheme.languages,
-    }));
+    const schemes = getWorkerDashboard(actor.sub).schemes;
     jsonResponse(res, 200, { schemes });
     return;
   }

@@ -98,6 +98,26 @@ from `/ngo/minimum-wages`, including an effective date and source note. Seed
 rates are illustrative references and must be checked against the latest state
 notifications before production use.
 
+## Schemes for you (welfare scheme awareness)
+
+The worker app surfaces relevant government welfare schemes for informal and
+migrant workers based on simple profile attributes: state, age, and work
+category. Workers add these in "My profile"; matching is informational only —
+results are framed as "You may be eligible", never a guarantee, and Pehchaan
+does not submit applications on a worker's behalf.
+
+The reference catalog (e-Shram, PM-SYM, Ayushman Bharat, ESIC, PM SVANidhi,
+BOCW construction workers welfare board, PM Awas Yojana, One Nation One Ration
+Card, old-age pension, and state domestic workers welfare boards) is
+admin-editable by NGO Admins from `/ngo/schemes`, like the Phase 26 wage
+table. Each scheme entry carries a plain-language description, basic
+eligibility, registration instructions, and an official portal link where one
+exists. Scheme names, descriptions, eligibility, and instructions are
+translated in Hindi, Bengali, Tamil, and Telugu through the same translation
+layer as the rest of the app, so language does not gatekeep scheme awareness.
+Seed content is illustrative and must be verified against the latest official
+sources before production use.
+
 ## Secure evidence storage
 
 Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,
