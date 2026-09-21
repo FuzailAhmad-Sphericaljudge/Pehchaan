@@ -42,6 +42,7 @@ export type CheckIn = {
 };
 
 export type AiTriage = { category: string; score: number; signals: string[]; generatedBy: string; generatedAt: string; humanDecision: string | null; finalCategory?: string; decidedBy?: string; decidedAt?: string };
+export type DebtBondage = { advanceTaken: boolean; cannotLeave: boolean; wagesWithheldForRepayment: boolean; movementRestricted: boolean; reportedAt: string };
 export type WorkerCase = {
   id: string;
   type: string;
@@ -49,6 +50,7 @@ export type WorkerCase = {
   status: string;
   summary: string;
   relationshipId?: string | null;
+  debtBondage?: DebtBondage | null;
   createdAt: string;
   aiTriage?: AiTriage;
   aiSummary?: string;
