@@ -1543,6 +1543,13 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const aiTriage = buildAiTriage(body.summary, { immediateDanger: Boolean(body.immediateDanger), happeningNow: Boolean(body.happeningNow), type: body.type || 'wage_theft' });
+      const debtBondage = body.type === 'debt_bondage' ? {
+        advanceTaken: Boolean(body.debtBondage?.advanceTaken),
+        cannotLeave: Boolean(body.debtBondage?.cannotLeave),
+        wagesWithheldForRepayment: Boolean(body.debtBondage?.wagesWithheldForRepayment),
+        movementRestricted: Boolean(body.debtBondage?.movementRestricted),
+        reportedAt: new Date().toISOString(),
+      } : null;
       const caseRelationshipId = body.relationshipId ? String(body.relationshipId) : null;
       if (caseRelationshipId) {
         const relationship = workRelationships.get(caseRelationshipId);
