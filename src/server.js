@@ -24,6 +24,7 @@ const auditLog = [];
 const alerts = [];
 const employerWageRecords = [];
 const employerInterest = [];
+const whatsappSessions = new Map();
 const alertAckWindowMs = Number(process.env.ALERT_ACK_WINDOW_MINUTES || 15) * 60 * 1000;
 const emergencyDisclaimer = 'Pehchaan does not replace emergency services, police, courts, or labour departments. It helps workers and trusted organizations organize information and access support more effectively.';
 const otpChallenges = new Map();
@@ -58,6 +59,161 @@ function makeAudit(action, actor, target, details = {}) {
   return entry;
 }
 
+function buildAiTriage(summary, { immediateDanger = false, happeningNow = false, type = 'other' } = {}) {
+  const text = String(summary || '').toLowerCase();
+  const signals = [];
+  let score = 0;
+  if (immediateDanger) { score += 60; signals.push('worker_selected_immediate_danger'); }
+  if (happeningNow) { score += 30; signals.push('worker_selected_happening_now'); }
+  const urgentWords = ['danger', 'threat', 'injury', 'hurt', 'violence', 'abuse', 'fire', 'trapped', 'खतरा', 'मार', 'चोट', 'आग'];
+  const reviewWords = ['unpaid', 'withheld', 'unsafe', 'harassment', 'deduction', 'wage', 'मजदूरी', 'पैसे', 'उत्पीड़न', 'असुरक्षित'];
+  const urgentHits = urgentWords.filter((word) => text.includes(word));
+  const reviewHits = reviewWords.filter((word) => text.includes(word));
+  if (urgentHits.length) { score += Math.min(20, urgentHits.length * 10); signals.push(`urgent_terms:${urgentHits.join(',')}`); }
+  if (reviewHits.length) { score += Math.min(15, reviewHits.length * 5); signals.push(`review_terms:${reviewHits.join(',')}`); }
+  if (type === 'unsafe_site' || type === 'harassment') { score += 10; signals.push(`case_type:${type}`); }
+  const category = score >= 60 ? 'Urgent' : score >= 20 ? 'Needs review' : 'Routine';
+  return { category, score: Math.min(score, 100), signals, generatedBy: 'rules-v1', generatedAt: new Date().toISOString(), humanDecision: null };
+}
+
+function buildAutoSummary(targetCase) {
+  const text = String(targetCase.summary || '').trim().replace(/\s+/g, ' ');
+  if (text.length <= 240) return text;
+  return `${text.slice(0, 237).replace(/\s+\S*$/, '')}...`;
+}
+
+function employerPatternSignals() {
+  const groups = new Map();
+  for (const item of cases) {
+    const worker = Array.from(workers.values()).find((candidate) => candidate.id === item.workerId);
+    const employer = String(worker?.profile?.employer || worker?.profile?.worksite || '').trim().toLowerCase();
+    if (!employer) continue;
+    const existing = groups.get(employer) || { employer, cases: [], workers: new Set() };
+    existing.cases.push(item.id);
+    existing.workers.add(item.workerId);
+    groups.set(employer, existing);
+  }
+  return Array.from(groups.values())
+    .filter((item) => item.workers.size >= 2)
+    .map((item) => ({ employer: item.employer, complaintCount: item.cases.length, independentWorkers: item.workers.size, caseIds: item.cases, signal: 'Multiple independent workers reference the same employer/site. Investigate; do not auto-penalize.' }));
+}
+
+function whatsappPhone(value) {
+  return String(value || '').replace(/^whatsapp:/, '').replace(/[^\d+]/g, '');
+}
+
+function xmlEscape(value) {
+  return String(value).replace(/[<>&'"]/g, (character) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' }[character]));
+}
+
+function whatsappMenu(language = 'hi') {
+  const menus = {
+    en: 'Pehchaan menu:\\nReply with a number:\\n1. Add wage received\\n2. Safety check-in\\n3. Report a problem\\n4. Check case status\\n5. Open full app\\nReply LANG HI, LANG BN, LANG TA, or LANG TE to change language.',
+    bn: 'পরিচয় মেনু:\\nএকটি নম্বর দিয়ে উত্তর দিন:\\n1. পাওয়া মজুরি যোগ করুন\\n2. নিরাপত্তা পরীক্ষা\\n3. সমস্যা জানান\\n4. মামলার অবস্থা দেখুন\\n5. সম্পূর্ণ অ্যাপ খুলুন',
+    ta: 'Pehchaan மெனு:\\nஎண்ணை அனுப்பவும்:\\n1. பெற்ற ஊதியத்தைச் சேர்க்கவும்\\n2. பாதுகாப்பு சோதனை\\n3. சிக்கலை தெரிவிக்கவும்\\n4. வழக்கு நிலை\\n5. முழு பயன்பாட்டைத் திறக்கவும்',
+    te: 'Pehchaan మెను:\\nఒక సంఖ్యతో ప్రత్యుత్తరం ఇవ్వండి:\\n1. అందుకున్న వేతనం జోడించండి\\n2. భద్రత తనిఖీ\\n3. సమస్యను నివేదించండి\\n4. కేసు స్థితి\\n5. పూర్తి యాప్ తెరవండి',
+    hi: 'पहचान मेन्यू:\\nनंबर से जवाब दें:\\n1. मिली मजदूरी जोड़ें\\n2. सुरक्षा जांच\\n3. समस्या बताएं\\n4. मामले की स्थिति\\n5. पूरा ऐप खोलें\\nभाषा बदलने के लिए LANG EN, LANG BN, LANG TA या LANG TE भेजें।',
+  };
+  return menus[language] || menus.en;
+}
+
+function whatsappText(language, key) {
+  const text = {
+    linked: { en: 'Your Pehchaan account is linked.', hi: 'आपका पहचान खाता जुड़ गया है।', bn: 'আপনার পরিচয় অ্যাকাউন্ট যুক্ত হয়েছে।', ta: 'உங்கள் Pehchaan கணக்கு இணைக்கப்பட்டது.', te: 'మీ Pehchaan ఖాతా లింక్ చేయబడింది.' },
+    welcome: { en: 'Welcome to Pehchaan. Reply REGISTER to link this WhatsApp number, or open the app for secure OTP linking.', hi: 'पहचान में आपका स्वागत है। यह WhatsApp नंबर जोड़ने के लिए REGISTER भेजें, या सुरक्षित OTP linking के लिए ऐप खोलें।', bn: 'পরিচয়ে স্বাগতম। এই WhatsApp নম্বর যুক্ত করতে REGISTER পাঠান, অথবা নিরাপদ OTP linking-এর জন্য অ্যাপ খুলুন।', ta: 'Pehchaan-க்கு வரவேற்கிறோம். இந்த WhatsApp எண்ணை இணைக்க REGISTER அனுப்பவும் அல்லது பாதுகாப்பான OTP linking-க்கு பயன்பாட்டைத் திறக்கவும்.', te: 'Pehchaan కు స్వాగతం. ఈ WhatsApp నంబర్‌ను లింక్ చేయడానికి REGISTER పంపండి లేదా సురక్షిత OTP linking కోసం యాప్ తెరవండి.' },
+  };
+  return text[key][language] || text[key].en;
+}
+
+async function handleWhatsAppMessage(req, res) {
+  const body = await parseBody(req);
+  const phone = whatsappPhone(body.From || body.from || body.phone);
+  const text = String(body.Body || body.body || '').trim();
+  if (!phone) { whatsappResponse(res, 'Phone number could not be identified.'); return; }
+  let session = whatsappSessions.get(phone) || { phone, workerId: null, language: 'hi', state: 'menu', data: {} };
+  const upper = text.toUpperCase();
+  if (upper === 'LANG EN' || upper === 'ENGLISH') session.language = 'en';
+  if (upper === 'LANG HI' || upper === 'HINDI') session.language = 'hi';
+  if (upper === 'LANG BN' || upper === 'BENGALI') session.language = 'bn';
+  if (upper === 'LANG TA' || upper === 'TAMIL') session.language = 'ta';
+  if (upper === 'LANG TE' || upper === 'TELUGU') session.language = 'te';
+  const language = session.language;
+  if (upper === 'REGISTER' || upper === 'LINK') {
+    const worker = ensureWorker(phone);
+    session.workerId = worker.id; session.state = 'menu';
+    makeAudit('whatsapp_worker_linked', worker.id, worker.id, { phone });
+    whatsappSessions.set(phone, session);
+    whatsappResponse(res, `${whatsappText(language, 'linked')}\\n\\n${whatsappMenu(language)}`);
+    return;
+  }
+  if (!session.workerId) {
+    whatsappSessions.set(phone, session);
+    whatsappResponse(res, whatsappText(language, 'welcome'));
+    return;
+  }
+  const worker = Array.from(workers.values()).find((item) => item.id === session.workerId);
+  if (upper === 'MENU' || upper === 'START' || upper === 'LANG EN' || upper === 'LANG HI') { session.state = 'menu'; whatsappSessions.set(phone, session); whatsappResponse(res, whatsappMenu(language)); return; }
+  if (session.state === 'wage_amount') {
+    const amount = Number(text.replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(amount) || amount <= 0) { whatsappResponse(res, language === 'en' ? 'Please reply with the amount, for example 500.' : 'कृपया रकम भेजें, जैसे 500।'); return; }
+    const entry = { id: randomUUID(), workerId: worker.id, date: new Date().toISOString(), type: 'received', amount, deductions: 0, overtime: 0, proofFileId: null, createdAt: new Date().toISOString(), source: 'whatsapp' };
+    wageEntries.push(entry); session.state = 'menu'; makeAudit('wage_entry_created', worker.id, entry.id, { source: 'whatsapp' }); whatsappSessions.set(phone, session);
+    whatsappResponse(res, language === 'en' ? `₹${amount} wage entry saved.\\n\\n${whatsappMenu(language)}` : `₹${amount} की मजदूरी दर्ज हो गई।\\n\\n${whatsappMenu(language)}`); return;
+  }
+  if (session.state === 'complaint_detail') {
+    const aiTriage = buildAiTriage(text, { type: 'other' });
+    const newCase = { id: `case-${Date.now()}`, workerId: worker.id, type: 'other', priority: 'medium', status: 'new', summary: text, owner: null, immediateDanger: false, happeningNow: false, aiTriage, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), source: 'whatsapp' };
+    cases.push(newCase); session.state = 'menu'; makeAudit('case_created', worker.id, newCase.id, { source: 'whatsapp' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, aiTriage); whatsappSessions.set(phone, session);
+    whatsappResponse(res, language === 'en' ? `Your case ${newCase.id} was created.\\n\\n${whatsappMenu(language)}` : `आपका मामला ${newCase.id} बन गया है।\\n\\n${whatsappMenu(language)}`); return;
+  }
+  if (session.state === 'case_status') {
+    const target = cases.find((item) => item.id === text && item.workerId === worker.id);
+    session.state = 'menu'; whatsappSessions.set(phone, session);
+    whatsappResponse(res, target ? `${target.id}: ${target.status}` : (language === 'en' ? 'Case not found. Check the case ID and try again.' : 'मामला नहीं मिला। ID जांचकर फिर कोशिश करें।')); return;
+  }
+  if (session.state === 'safety_choice' && (upper === 'SAFE' || upper === 'HELP')) {
+    session.state = 'menu';
+    const status = upper === 'HELP' ? 'unsafe' : 'safe';
+    const checkIn = { id: randomUUID(), workerId: worker.id, status, hazard: status === 'unsafe' ? 'whatsapp distress' : null, locationConsent: false, location: null, notes: 'WhatsApp check-in', createdAt: new Date().toISOString(), source: 'whatsapp' };
+    checkIns.push(checkIn); makeAudit('check_in_created', worker.id, checkIn.id, { source: 'whatsapp' });
+    if (status === 'unsafe') createSafetyAlert({ workerId: worker.id, kind: 'emergency_checkin', location: null, locationConsent: false, details: { source: 'whatsapp' } });
+    whatsappSessions.set(phone, session);
+    whatsappResponse(res, status === 'unsafe' ? `${emergencyDisclaimer}\\n\\n${language === 'en' ? 'Help alert sent. If life-threatening, call 112.' : 'मदद का अलर्ट भेज दिया गया। जान को खतरा हो तो 112 पर कॉल करें।'}` : (language === 'en' ? `You are marked safe.\\n\\n${whatsappMenu(language)}` : `आप सुरक्षित दर्ज हैं।\\n\\n${whatsappMenu(language)}`));
+    return;
+  }
+  if (text === '1') { session.state = 'wage_amount'; whatsappSessions.set(phone, session); whatsappResponse(res, language === 'en' ? 'Reply with the amount received, for example 500.' : 'मिली हुई रकम भेजें, जैसे 500।'); return; }
+  if (text === '2') {
+    const status = upper.includes('HELP') ? 'unsafe' : 'safe';
+    if (upper === '2') { session.state = 'safety_choice'; whatsappSessions.set(phone, session); whatsappResponse(res, language === 'en' ? 'Reply SAFE or HELP.' : 'SAFE या HELP भेजें।'); return; }
+    const checkIn = { id: randomUUID(), workerId: worker.id, status, hazard: status === 'unsafe' ? 'whatsapp distress' : null, locationConsent: false, location: null, notes: 'WhatsApp check-in', createdAt: new Date().toISOString(), source: 'whatsapp' };
+    checkIns.push(checkIn);
+    if (status === 'unsafe') createSafetyAlert({ workerId: worker.id, kind: 'emergency_checkin', location: null, locationConsent: false, details: { source: 'whatsapp' } });
+    session.state = 'menu'; whatsappSessions.set(phone, session); makeAudit('check_in_created', worker.id, checkIn.id, { source: 'whatsapp' });
+    whatsappResponse(res, status === 'unsafe' ? `${emergencyDisclaimer}\\n\\n${language === 'en' ? 'Help alert sent. If life-threatening, call 112.' : 'मदद का अलर्ट भेज दिया गया। जान को खतरा हो तो 112 पर कॉल करें।'}` : (language === 'en' ? `You are marked safe.\\n\\n${whatsappMenu(language)}` : `आप सुरक्षित दर्ज हैं।\\n\\n${whatsappMenu(language)}`)); return;
+  }
+  if (text === '3') { session.state = 'complaint_detail'; whatsappSessions.set(phone, session); whatsappResponse(res, language === 'en' ? 'Reply with a short description of the problem. You can add more detail in the app.' : 'समस्या का छोटा विवरण भेजें। अधिक जानकारी ऐप में जोड़ सकते हैं।'); return; }
+  if (text === '4') { session.state = 'case_status'; whatsappSessions.set(phone, session); whatsappResponse(res, language === 'en' ? 'Reply with your case ID.' : 'अपने मामले की ID भेजें।'); return; }
+  if (text === '5') { whatsappResponse(res, `${process.env.WHATSAPP_APP_URL || 'http://localhost:5173'}/worker`); return; }
+  whatsappResponse(res, whatsappMenu(language));
+}
+
+function whatsappResponse(res, message) {
+  res.writeHead(200, { 'Content-Type': 'text/xml; charset=utf-8' });
+  res.end(`<Response><Message>${xmlEscape(message)}</Message></Response>`);
+}
+
+async function sendWhatsAppNotification(phone, message) {
+  if (process.env.WHATSAPP_PROVIDER !== 'twilio') return { provider: 'stub' };
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_WHATSAPP_FROM) throw new Error('WhatsApp provider is not configured.');
+  const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+    method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ From: process.env.TWILIO_WHATSAPP_FROM, To: `whatsapp:${phone}`, Body: message }),
+  });
+  if (!response.ok) throw new Error('WhatsApp provider rejected notification.');
+  return { provider: 'twilio' };
+}
+
 function jsonResponse(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json',
@@ -85,7 +241,10 @@ function parseBody(req) {
         return;
       }
       try {
-        resolve(JSON.parse(body));
+        const contentType = String(req.headers['content-type'] || '');
+        resolve(contentType.includes('application/x-www-form-urlencoded')
+          ? Object.fromEntries(new URLSearchParams(body))
+          : JSON.parse(body));
       } catch (error) {
         reject(new Error('Invalid JSON payload'));
       }
@@ -374,6 +533,19 @@ const server = http.createServer(async (req, res) => {
       cases: cases.length,
       database: databaseConfigured() ? 'postgresql' : 'not_configured',
     });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/whatsapp/webhook') {
+    const challenge = url.searchParams.get('hub.challenge');
+    if (url.searchParams.get('hub.verify_token') === (process.env.WHATSAPP_VERIFY_TOKEN || 'replace-with-webhook-verify-token') && challenge) {
+      res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(challenge);
+    } else jsonResponse(res, 403, { error: 'Webhook verification failed.' });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/whatsapp/webhook') {
+    try { await handleWhatsAppMessage(req, res); } catch (error) { jsonResponse(res, 400, { error: error.message || 'WhatsApp message could not be handled.' }); }
     return;
   }
 
@@ -711,6 +883,7 @@ const server = http.createServer(async (req, res) => {
         jsonResponse(res, 403, { error: 'You can only create a case for yourself.' });
         return;
       }
+      const aiTriage = buildAiTriage(body.summary, { immediateDanger: Boolean(body.immediateDanger), happeningNow: Boolean(body.happeningNow), type: body.type || 'wage_theft' });
       const newCase = {
         id: `case-${Date.now()}`,
         workerId: String(body.workerId || ''),
@@ -721,6 +894,7 @@ const server = http.createServer(async (req, res) => {
         status: 'new',
         summary: body.summary || '',
         owner: body.owner || null,
+        aiTriage,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -738,6 +912,7 @@ const server = http.createServer(async (req, res) => {
         details: { immediateDanger: newCase.immediateDanger, happeningNow: newCase.happeningNow },
       }) : null;
       makeAudit('case_created', newCase.workerId, newCase.id, { type: newCase.type });
+      makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, aiTriage);
       jsonResponse(res, 201, { case: newCase, ...(alert ? { alert, disclaimer: emergencyDisclaimer, emergencyNumber: '112' } : {}) });
       return;
     } catch (error) {
@@ -885,7 +1060,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && pathname === '/api/ngo/cases') {
     if (!authenticate(req, res, ['ngo_caseworker', 'ngo_admin'])) return;
-    jsonResponse(res, 200, { cases, total: cases.length, auditLog: auditLog.slice(0, 5) });
+    jsonResponse(res, 200, { cases: cases.map((item) => ({ ...item, aiSummary: buildAutoSummary(item) })), total: cases.length, auditLog: auditLog.slice(0, 5) });
     return;
   }
 
@@ -903,6 +1078,7 @@ const server = http.createServer(async (req, res) => {
       notes: caseNotes.filter((note) => note.caseId === caseId),
       evidence: evidenceItems.filter((item) => item.caseId === caseId),
       auditLog: auditLog.filter((entry) => entry.target === caseId),
+      aiSummary: buildAutoSummary(targetCase),
     });
     return;
   }
@@ -947,6 +1123,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname === '/api/ngo/ai-patterns') {
+    const actor = authenticate(req, res, ['ngo_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { patterns: employerPatternSignals(), generatedAt: new Date().toISOString() });
+    return;
+  }
+
   if (req.method === 'PATCH' && pathname.startsWith('/api/ngo/cases/')) {
     const actor = authenticate(req, res, ['ngo_caseworker', 'ngo_admin']);
     if (!actor) return;
@@ -962,6 +1145,10 @@ const server = http.createServer(async (req, res) => {
       targetCase.status = body.status || targetCase.status;
       targetCase.owner = body.owner || targetCase.owner;
       targetCase.priority = body.priority || targetCase.priority;
+      if (body.aiDecision === 'accept' || body.aiDecision === 'override') {
+        targetCase.aiTriage = { ...targetCase.aiTriage, humanDecision: body.aiDecision, decidedBy: actor.sub, decidedAt: new Date().toISOString(), finalCategory: body.aiDecision === 'accept' ? targetCase.aiTriage?.category : String(body.finalCategory || targetCase.aiTriage?.category || 'Needs review') };
+        makeAudit(body.aiDecision === 'accept' ? 'ai_triage_accepted' : 'ai_triage_overridden', actor.sub, caseId, { aiTriage: targetCase.aiTriage });
+      }
       targetCase.updatedAt = new Date().toISOString();
       makeAudit('case_updated', actor.sub, caseId, { changes: body });
 
@@ -1059,7 +1246,7 @@ async function start() {
     }
     for (const row of state.wages) wageEntries.push({ id: row.id, workerId: row.worker_id, date: new Date(row.entry_date).toISOString(), type: row.entry_type, amount: Number(row.amount), deductions: Number(row.deductions), overtime: Number(row.overtime), proofFileId: row.proof_file_id, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.checkins) checkIns.push({ id: row.id, workerId: row.worker_id, status: row.status, hazard: row.hazard, locationConsent: row.location_consent, location: row.location, notes: row.notes, createdAt: new Date(row.created_at).toISOString() });
-    for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, immediateDanger: row.immediate_danger, happeningNow: row.happening_now, createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
+    for (const row of state.cases) cases.push({ id: row.id, workerId: row.worker_id, type: row.type, priority: row.priority, status: row.status, summary: row.summary, owner: row.owner, immediateDanger: row.immediate_danger, happeningNow: row.happening_now, aiTriage: row.ai_triage || buildAiTriage(row.summary, { immediateDanger: row.immediate_danger, happeningNow: row.happening_now, type: row.type }), createdAt: new Date(row.created_at).toISOString(), updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.notes) caseNotes.push({ id: row.id, caseId: row.case_id, author: row.author, text: row.body, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.evidence) evidenceItems.push({ id: row.id, caseId: row.case_id, type: row.evidence_type, fileName: row.file_name, storageKey: row.storage_key, checksum: row.checksum, createdAt: new Date(row.created_at).toISOString(), uploaderId: row.uploader_id, mimeType: row.mime_type, sizeBytes: Number(row.size_bytes), consent: row.consent, retentionUntil: row.retention_until, scanStatus: row.scan_status, uploadedAt: row.uploaded_at, available: row.available });
     for (const row of state.audits) auditLog.push({ id: row.id, action: row.action, actor: row.actor, target: row.target, details: row.details, timestamp: new Date(row.created_at).toISOString() });

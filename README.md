@@ -25,6 +25,40 @@ recovery where available, retain multiple backup generations, and perform
 periodic restore drills. Backup credentials should be kept separate from the
 application runtime credentials.
 
+## WhatsApp bot
+
+The guided bot is available at `POST /api/whatsapp/webhook` and returns TwiML
+messages for Twilio WhatsApp webhooks. It supports `REGISTER`, numbered menu
+actions for wages, safety, complaints, case status, language selection, and a
+link back to the full app. WhatsApp-originated records and audit events use the
+same worker/case/check-in flows as the app. Set `WHATSAPP_VERIFY_TOKEN` and
+`WHATSAPP_APP_URL`; leave `WHATSAPP_PROVIDER=stub` for local webhook testing.
+For outbound provider messages, configure the Twilio WhatsApp variables only
+after a WhatsApp Business sender has been approved.
+
+## AI-assisted triage
+
+New complaints receive a transparent, rules-based AI suggestion (`Urgent`,
+`Needs review`, or `Routine`) using explicit danger flags, complaint type, and
+matching safety/wage terms. The suggestion is never used to close, reject, or
+hide a case. NGO caseworkers can accept it or choose a different category;
+both actions are written to the audit log. NGO Admins also receive an
+aggregate employer/site pattern signal when at least two independent workers
+reference the same profile employer/worksite. This signal is investigative
+only and does not publish or penalize an employer.
+
+## Regional languages
+
+The worker-facing translation system supports Hindi, English, Bengali, Tamil,
+and Telugu through the language picker. Browser speech recognition and
+read-aloud use the matching `hi-IN`, `en-IN`, `bn-IN`, `ta-IN`, or `te-IN`
+locale when the device provides it. The WhatsApp demo menu accepts `LANG HI`,
+`LANG EN`, `LANG BN`, `LANG TA`, and `LANG TE`.
+
+Regional UI strings are marked for native-speaker review before production
+rollout. Free-text complaint descriptions are intentionally not machine
+translated in this phase.
+
 ## Secure evidence storage
 
 Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,

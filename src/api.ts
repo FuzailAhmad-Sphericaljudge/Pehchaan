@@ -1,4 +1,4 @@
-export type Language = "hi" | "en";
+export type Language = "hi" | "en" | "bn" | "ta" | "te";
 
 export type Worker = {
   id: string;
@@ -25,6 +25,7 @@ export type CheckIn = {
   createdAt: string;
 };
 
+export type AiTriage = { category: string; score: number; signals: string[]; generatedBy: string; generatedAt: string; humanDecision: string | null; finalCategory?: string; decidedBy?: string; decidedAt?: string };
 export type WorkerCase = {
   id: string;
   type: string;
@@ -32,6 +33,8 @@ export type WorkerCase = {
   status: string;
   summary: string;
   createdAt: string;
+  aiTriage?: AiTriage;
+  aiSummary?: string;
 };
 
 export type Dashboard = {
@@ -43,7 +46,7 @@ export type Dashboard = {
 
 export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string };
 export type Evidence = { id: string; fileName: string; type: string; mimeType?: string; sizeBytes?: number; checksum?: string | null; scanStatus?: string; available?: boolean; createdAt: string };
-export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; text: string; createdAt: string }[]; evidence: Evidence[]; auditLog: { id: string; action: string; actor: string; timestamp: string; details: Record<string, unknown> }[] };
+export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; text: string; createdAt: string }[]; evidence: Evidence[]; auditLog: { id: string; action: string; actor: string; timestamp: string; details: Record<string, unknown> }[]; aiSummary?: string };
 
 type ApiError = Error & { offline?: boolean; status?: number };
 
@@ -124,6 +127,7 @@ export const ngoApi = {
   updateCase: (caseId: string, body: Record<string, unknown>) => request<{ case: NgoCase }>(`/api/ngo/cases/${encodeURIComponent(caseId)}`, { ...json(body), method: "PATCH" }),
   addNote: (caseId: string, body: { author: string; text: string }) => request<{ note: CaseDetail["notes"][number] }>(`/api/ngo/cases/${encodeURIComponent(caseId)}/notes`, json(body)),
   audit: () => request<{ entries: CaseDetail["auditLog"] }>("/api/ngo/audit-log"),
+  aiPatterns: () => request<{ patterns: { employer: string; complaintCount: number; independentWorkers: number; caseIds: string[]; signal: string }[] }>("/api/ngo/ai-patterns"),
   alerts: () => request<{ alerts: Alert[]; total: number }>("/api/ngo/alerts"),
   updateAlert: (alertId: string, body: Record<string, unknown>) => request<{ alert: Alert }>(`/api/ngo/alerts/${encodeURIComponent(alertId)}`, { ...json(body), method: "PATCH" }),
   impact: (range = "month") => request<ImpactReport>(`/api/analytics/impact?range=${encodeURIComponent(range)}`),
