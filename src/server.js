@@ -277,9 +277,58 @@ function escalateDueAlerts() {
       alert.escalatedAt = new Date().toISOString();
       makeAudit('alert_escalated', 'system', alert.caseId || alert.id, { alertId: alert.id, notified: 'ngo_admin' });
     }
-
-    setInterval(escalateDueAlerts, 60 * 1000);
   }
+}
+
+setInterval(escalateDueAlerts, 60 * 1000);
+
+function analyticsRange(url) {
+  const now = Date.now();
+  const range = url.searchParams.get('range') || 'month';
+  const start = url.searchParams.get('from');
+  const end = url.searchParams.get('to');
+  if (start && end) return { from: new Date(start), to: new Date(`${end}T23:59:59.999Z`) };
+  const days = range === 'quarter' ? 90 : 30;
+  return { from: new Date(now - days * 24 * 60 * 60 * 1000), to: new Date(now) };
+}
+
+function buildAnalytics(url) {
+  const { from, to } = analyticsRange(url);
+  const includedCases = cases.filter((item) => {
+    const created = new Date(item.createdAt);
+    return created >= from && created <= to;
+  });
+  const category = { wage: 0, safety: 0, other: 0 };
+  const byStatus = {};
+  const byDay = {};
+  for (const item of includedCases) {
+    const key = item.type === 'wage_theft' ? 'wage' : item.type === 'unsafe_site' ? 'safety' : 'other';
+    category[key] += 1;
+    byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+    const day = item.createdAt.slice(0, 10);
+    byDay[day] = byDay[day] || { documented: 0, resolved: 0, open: 0 };
+    byDay[day].documented += 1;
+    if (item.status === 'resolved') byDay[day].resolved += 1; else byDay[day].open += 1;
+  }
+  const responseTimes = includedCases.filter((item) => item.status === 'resolved').map((item) => Math.max(0, new Date(item.updatedAt) - new Date(item.createdAt)));
+  const language = {};
+  for (const worker of workers.values()) language[worker.language || 'unknown'] = (language[worker.language || 'unknown'] || 0) + 1;
+  const regions = {};
+  for (const worker of workers.values()) {
+    const region = String(worker.profile?.origin || '').trim();
+    if (region) regions[region] = (regions[region] || 0) + 1;
+  }
+  return {
+    range: { from: from.toISOString(), to: to.toISOString() },
+    workersSupported: new Set(includedCases.map((item) => item.workerId)).size,
+    casesDocumented: includedCases.length,
+    casesByCategory: category,
+    averageResponseHours: responseTimes.length ? Math.round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length / 3600000 * 10) / 10 : 0,
+    casesByStatus: byStatus,
+    casesOverTime: Object.entries(byDay).map(([date, values]) => ({ date, ...values })),
+    geographicDistribution: regions,
+    languageUsage: language,
+  };
 }
 
 async function supabaseStorage(pathname, method, body = null) {
@@ -428,13 +477,16 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (body.email !== (process.env.NGO_DEMO_EMAIL || 'ngo@pehchaan.org') || body.password !== (process.env.NGO_DEMO_PASSWORD || 'demo')) {
+    const adminLogin = body.email === (process.env.NGO_ADMIN_EMAIL || 'admin@pehchaan.org') && body.password === (process.env.NGO_ADMIN_PASSWORD || 'demo');
+    const caseworkerLogin = body.email === (process.env.NGO_DEMO_EMAIL || 'ngo@pehchaan.org') && body.password === (process.env.NGO_DEMO_PASSWORD || 'demo');
+    if (!adminLogin && !caseworkerLogin) {
       jsonResponse(res, 401, { error: 'Invalid organization credentials.' });
       return;
     }
-    const access = issueSession(body.email, 'ngo_caseworker');
-    const refresh = issueSession(body.email, 'ngo_caseworker', 'refresh');
-    jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'ngo_caseworker' } });
+    const role = adminLogin ? 'ngo_admin' : 'ngo_caseworker';
+    const access = issueSession(body.email, role);
+    const refresh = issueSession(body.email, role, 'refresh');
+    jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role } });
     return;
   }
 
@@ -447,6 +499,46 @@ const server = http.createServer(async (req, res) => {
     const access = issueSession(body.email, 'employer');
     const refresh = issueSession(body.email, 'employer', 'refresh');
     jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'employer' } });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/partner-login') {
+    const body = await parseBody(req);
+    if (body.email !== (process.env.PARTNER_DEMO_EMAIL || 'partner@pehchaan.org') || body.password !== (process.env.PARTNER_DEMO_PASSWORD || 'demo')) {
+      jsonResponse(res, 401, { error: 'Invalid partner credentials.' });
+      return;
+    }
+    const role = body.partnerRole === 'government' ? 'government' : 'funder';
+    const access = issueSession(body.email, role);
+    const refresh = issueSession(body.email, role, 'refresh');
+    jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role } });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/analytics/impact') {
+    const actor = authenticate(req, res, ['ngo_admin', 'government', 'funder']);
+    if (!actor) return;
+    jsonResponse(res, 200, buildAnalytics(url));
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/analytics/impact.csv') {
+    const actor = authenticate(req, res, ['ngo_admin', 'government', 'funder']);
+    if (!actor) return;
+    const report = buildAnalytics(url);
+    const rows = [
+      ['metric', 'value'],
+      ['workers_supported', report.workersSupported],
+      ['cases_documented', report.casesDocumented],
+      ['average_response_hours', report.averageResponseHours],
+      ...Object.entries(report.casesByCategory).map(([key, value]) => [`cases_${key}`, value]),
+      ...Object.entries(report.casesByStatus).map(([key, value]) => [`status_${key}`, value]),
+      ...Object.entries(report.languageUsage).map(([key, value]) => [`language_${key}`, value]),
+      ...Object.entries(report.geographicDistribution).map(([key, value]) => [`region_${key.replaceAll(',', ' ')}`, value]),
+    ];
+    const csv = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="pehchaan-impact-summary.csv"' });
+    res.end(csv);
     return;
   }
 

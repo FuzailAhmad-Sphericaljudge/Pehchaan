@@ -126,9 +126,12 @@ export const ngoApi = {
   audit: () => request<{ entries: CaseDetail["auditLog"] }>("/api/ngo/audit-log"),
   alerts: () => request<{ alerts: Alert[]; total: number }>("/api/ngo/alerts"),
   updateAlert: (alertId: string, body: Record<string, unknown>) => request<{ alert: Alert }>(`/api/ngo/alerts/${encodeURIComponent(alertId)}`, { ...json(body), method: "PATCH" }),
+  impact: (range = "month") => request<ImpactReport>(`/api/analytics/impact?range=${encodeURIComponent(range)}`),
+  impactCsv: (range = "month") => `/api/analytics/impact.csv?range=${encodeURIComponent(range)}`,
 };
 
 export type Alert = { id: string; caseId: string | null; kind: string; status: string; createdAt: string; dueAt: string; acknowledgedAt: string | null; acknowledgedBy: string | null; actionTaken: string | null; falseAlarmReason: string | null };
+export type ImpactReport = { range: { from: string; to: string }; workersSupported: number; casesDocumented: number; casesByCategory: Record<string, number>; averageResponseHours: number; casesByStatus: Record<string, number>; casesOverTime: { date: string; documented: number; resolved: number; open: number }[]; geographicDistribution: Record<string, number>; languageUsage: Record<string, number> };
 
 export const evidenceApi = {
   createUpload: (caseId: string, body: Record<string, unknown>) => request<{ evidence: Evidence; uploadUrl: string }>(`/api/cases/${encodeURIComponent(caseId)}/evidence`, json(body)),
