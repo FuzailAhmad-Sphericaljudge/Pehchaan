@@ -22,6 +22,8 @@ const caseNotes = [];
 const evidenceItems = [];
 const auditLog = [];
 const alerts = [];
+const employerWageRecords = [];
+const employerInterest = [];
 const alertAckWindowMs = Number(process.env.ALERT_ACK_WINDOW_MINUTES || 15) * 60 * 1000;
 const emergencyDisclaimer = 'Pehchaan does not replace emergency services, police, courts, or labour departments. It helps workers and trusted organizations organize information and access support more effectively.';
 const otpChallenges = new Map();
@@ -425,6 +427,7 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
       return;
     }
+
     if (body.email !== (process.env.NGO_DEMO_EMAIL || 'ngo@pehchaan.org') || body.password !== (process.env.NGO_DEMO_PASSWORD || 'demo')) {
       jsonResponse(res, 401, { error: 'Invalid organization credentials.' });
       return;
@@ -432,6 +435,50 @@ const server = http.createServer(async (req, res) => {
     const access = issueSession(body.email, 'ngo_caseworker');
     const refresh = issueSession(body.email, 'ngo_caseworker', 'refresh');
     jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'ngo_caseworker' } });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/auth/employer-login') {
+    const body = await parseBody(req);
+    if (body.email !== (process.env.EMPLOYER_DEMO_EMAIL || 'employer@pehchaan.org') || body.password !== (process.env.EMPLOYER_DEMO_PASSWORD || 'demo')) {
+      jsonResponse(res, 401, { error: 'Invalid employer credentials.' });
+      return;
+    }
+    const access = issueSession(body.email, 'employer');
+    const refresh = issueSession(body.email, 'employer', 'refresh');
+    jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'employer' } });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/employer/dashboard') {
+    const actor = authenticate(req, res, ['employer']);
+    if (!actor) return;
+    const records = employerWageRecords.filter((record) => record.employerId === actor.sub && record.workerConsent === true).map(({ workerId, workerConsent, ...record }) => record);
+    const acknowledged = records.filter((record) => record.status === 'responded').length;
+    jsonResponse(res, 200, { records, compliance: { flagged: records.filter((record) => record.status === 'disputed').length, responded: acknowledged, responseRate: records.length ? Math.round((acknowledged / records.length) * 100) : 100 } });
+    return;
+  }
+
+  if (req.method === 'PATCH' && pathname.startsWith('/api/employer/wage-records/')) {
+    const actor = authenticate(req, res, ['employer']);
+    if (!actor) return;
+    const record = employerWageRecords.find((item) => item.id === pathname.split('/')[4] && item.employerId === actor.sub);
+    if (!record) { jsonResponse(res, 404, { error: 'Wage record not found.' }); return; }
+    const body = await parseBody(req);
+    record.discrepancyResponse = String(body.response || '').trim();
+    record.status = 'responded';
+    makeAudit('employer_wage_discrepancy_responded', actor.sub, record.id, { response: record.discrepancyResponse });
+    jsonResponse(res, 200, { record: { ...record, workerId: undefined, workerConsent: undefined } });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/employer/interest') {
+    const body = await parseBody(req);
+    const interest = { id: randomUUID(), name: String(body.name || '').trim(), email: String(body.email || '').trim(), organization: String(body.organization || '').trim(), message: String(body.message || '').trim(), createdAt: new Date().toISOString() };
+    if (!interest.name || !interest.email || !interest.organization) { jsonResponse(res, 400, { error: 'Name, email, and organization are required.' }); return; }
+    employerInterest.push(interest);
+    makeAudit('employer_interest_submitted', 'public', interest.id, { organization: interest.organization });
+    jsonResponse(res, 201, { submitted: true });
     return;
   }
 

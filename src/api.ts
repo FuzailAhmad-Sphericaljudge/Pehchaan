@@ -100,7 +100,15 @@ export const authApi = {
   requestOtp: (phone: string) => request<{ workerId: string; otpHint?: string }>("/api/auth/request-otp", json({ phone })),
   verifyOtp: (phone: string, otp: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: Worker }>("/api/auth/verify-otp", json({ phone, otp })),
   ngoLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/ngo-login", json({ email, password })),
+  employerLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/employer-login", json({ email, password })),
   logout: (refreshToken?: string) => request<void>("/api/auth/logout", json({ refreshToken })),
+};
+
+export type EmployerRecord = { id: string; period: string; promisedAmount: number; paidAmount: number; status: string; discrepancyResponse?: string | null };
+export const employerApi = {
+  dashboard: () => request<{ records: EmployerRecord[]; compliance: { flagged: number; responded: number; responseRate: number } }>("/api/employer/dashboard"),
+  respond: (id: string, response: string) => request<{ record: EmployerRecord }>(`/api/employer/wage-records/${encodeURIComponent(id)}`, { ...json({ response }), method: "PATCH" }),
+  interest: (body: Record<string, unknown>) => request<{ submitted: boolean }>("/api/employer/interest", json(body)),
 };
 
 export const workerApi = {
