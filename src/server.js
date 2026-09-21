@@ -988,14 +988,14 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && pathname === '/api/auth/ngo-login') {
     const body = await parseBody(req);
-    if (!checkRateLimit(`ngo-login:${req.socket.remoteAddress}`, 10, 15 * 60 * 1000)) {
-      jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
-      return;
-    }
 
     const adminLogin = body.email === (process.env.NGO_ADMIN_EMAIL || 'admin@pehchaan.org') && body.password === (process.env.NGO_ADMIN_PASSWORD || 'demo');
     const caseworkerLogin = body.email === (process.env.NGO_DEMO_EMAIL || 'ngo@pehchaan.org') && body.password === (process.env.NGO_DEMO_PASSWORD || 'demo');
     if (!adminLogin && !caseworkerLogin) {
+      if (!checkRateLimit(`ngo-login-failed:${req.socket.remoteAddress}`, 10, 15 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
+        return;
+      }
       jsonResponse(res, 401, { error: 'Invalid organization credentials.' });
       return;
     }
