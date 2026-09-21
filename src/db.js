@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -33,8 +33,10 @@ export async function loadState() {
     query('SELECT * FROM worksites'),
     query('SELECT * FROM legal_documents'),
     query('SELECT * FROM minimum_wage_rates'),
+    query('SELECT * FROM welfare_schemes'),
+    query('SELECT * FROM work_relationships'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows };
 }
 
 export async function saveState(state) {
@@ -57,9 +59,9 @@ export async function saveState(state) {
     }
     for (const entry of state.wageEntries) {
       await client.query(
-        `INSERT INTO wage_entries (id, worker_id, entry_date, entry_type, amount, deductions, overtime, proof_file_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
-        [entry.id, entry.workerId, entry.date, entry.type, entry.amount, entry.deductions, entry.overtime, entry.proofFileId, entry.createdAt],
+        `INSERT INTO wage_entries (id, worker_id, entry_date, entry_type, amount, deductions, overtime, proof_file_id, relationship_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
+        [entry.id, entry.workerId, entry.date, entry.type, entry.amount, entry.deductions, entry.overtime, entry.proofFileId, entry.relationshipId, entry.createdAt],
       );
     }
     for (const item of state.checkIns) {
@@ -71,10 +73,10 @@ export async function saveState(state) {
     }
     for (const item of state.cases) {
       await client.query(
-        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, immediate_danger, happening_now, ai_triage, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,immediate_danger=$8,happening_now=$9,ai_triage=$10,updated_at=$12`,
-        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.immediateDanger, item.happeningNow, item.aiTriage || {}, item.createdAt, item.updatedAt],
+        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, immediate_danger, happening_now, ai_triage, relationship_id, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,immediate_danger=$8,happening_now=$9,ai_triage=$10,relationship_id=$11,updated_at=$13`,
+        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.immediateDanger, item.happeningNow, item.aiTriage || {}, item.relationshipId, item.createdAt, item.updatedAt],
       );
     }
     for (const item of state.caseNotes) {
@@ -116,6 +118,18 @@ export async function saveState(state) {
     }
     for (const item of state.minimumWages || []) {
       await client.query('INSERT INTO minimum_wage_rates (id, state, worker_category, daily_amount, currency, effective_from, source_note, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (state, worker_category) DO UPDATE SET daily_amount=$4,currency=$5,effective_from=$6,source_note=$7,updated_at=$8', [item.id, item.state, item.workerCategory, item.dailyAmount, item.currency, item.effectiveFrom, item.sourceNote, item.updatedAt]);
+    }
+    for (const item of state.workRelationships || []) {
+      await client.query(`INSERT INTO work_relationships (id, worker_id, label, employer_name, site_name, category, started_on, ended_on, active, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (id) DO UPDATE SET label=$3,employer_name=$4,site_name=$5,category=$6,started_on=$7,ended_on=$8,active=$9`,
+        [item.id, item.workerId, item.label, item.employerName, item.siteName, item.category, item.startedOn, item.endedOn, item.active, item.createdAt]);
+    }
+    for (const item of state.welfareSchemes || []) {
+      await client.query(`INSERT INTO welfare_schemes (id, slug, name, description, eligibility, registration_instructions, official_url, languages, states, worker_categories, min_age, max_age, active, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        ON CONFLICT (id) DO UPDATE SET name=$3,description=$4,eligibility=$5,registration_instructions=$6,official_url=$7,languages=$8,states=$9,worker_categories=$10,min_age=$11,max_age=$12,active=$13,updated_at=$14`,
+        [item.id, item.slug, item.name, item.description, item.eligibility, item.registrationInstructions, item.officialUrl, item.languages || {}, item.states, item.workerCategories, item.minAge, item.maxAge, item.active, item.updatedAt]);
     }
     await client.query('COMMIT');
   } catch (error) {

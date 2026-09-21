@@ -43,7 +43,9 @@ export type Dashboard = {
   wageEntries: WageEntry[];
   checkIns: CheckIn[];
   cases: WorkerCase[];
+  schemes?: WelfareScheme[];
 };
+export type WelfareScheme = { id: string; slug: string; name: string; description: string; eligibility: string; registrationInstructions: string; officialUrl?: string | null; languages?: Record<string, { name?: string; description?: string; eligibility?: string; registrationInstructions?: string }>; };
 
 export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string };
 export type Evidence = { id: string; fileName: string; type: string; mimeType?: string; sizeBytes?: number; checksum?: string | null; scanStatus?: string; available?: boolean; createdAt: string };
@@ -127,6 +129,10 @@ export type MinimumWageRate = { id: string; state: string; workerCategory: strin
 export const minimumWageApi = {
   list: () => request<{ rates: MinimumWageRate[] }>("/api/minimum-wages"),
   upsert: (body: Record<string, unknown>) => request<{ rate: MinimumWageRate }>("/api/ngo/minimum-wages", json(body)),
+};
+export const schemeApi = {
+  list: () => request<{ schemes: WelfareScheme[] }>("/api/worker/schemes"),
+  upsert: (body: Record<string, unknown>) => request<{ scheme: WelfareScheme }>("/api/ngo/schemes", json(body)),
 };
 
 export const ngoApi = {

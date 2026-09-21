@@ -29,6 +29,7 @@ const employerInterest = [];
 const worksites = new Map();
 const legalDocuments = new Map();
 const minimumWages = new Map();
+const welfareSchemes = new Map();
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const smsSessions = new Map();
@@ -48,7 +49,7 @@ const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -535,8 +536,11 @@ function getWorkerDashboard(workerId) {
       workerCategory: rate.workerCategory,
       effectiveFrom: rate.effectiveFrom,
       sourceNote: rate.sourceNote,
-      message: below ? 'This looks below the standard minimum wage reference for your state/category.' : 'This wage is at or above the current reference rate for your state/category.',
+      message: below
+        ? 'This looks below the standard minimum wage reference for your state/category. Official rates can vary by shift, skill level, and the latest government notification.'
+        : 'This wage is at or above the current reference rate for your state/category. Keep recording your wages so you have your own record.',
       nextStep: 'Would you like to file a complaint about this?',
+      nextStepNeutral: 'You can also simply keep this entry in your wage history — no action is needed.',
     };
   }
 
@@ -544,11 +548,27 @@ function getWorkerDashboard(workerId) {
     return { id: rate.id, state: rate.state, workerCategory: rate.workerCategory, dailyAmount: Number(rate.dailyAmount), currency: rate.currency, effectiveFrom: rate.effectiveFrom, sourceNote: rate.sourceNote, updatedAt: rate.updatedAt };
   }
 
+  function matchingSchemes(workerProfile = {}) {
+    const age = Number(workerProfile.age);
+    const state = String(workerProfile.state || workerProfile.originState || '').trim().toLowerCase();
+    const category = String(workerProfile.workerCategory || '').trim().toLowerCase();
+    return Array.from(welfareSchemes.values()).filter((scheme) => {
+      if (!scheme.active) return false;
+      if (Number.isFinite(age) && scheme.minAge !== null && age < scheme.minAge) return false;
+      if (Number.isFinite(age) && scheme.maxAge !== null && age > scheme.maxAge) return false;
+      const states = scheme.states.map((item) => String(item).toLowerCase());
+      if (states.length && !states.includes('all india') && state && !states.includes(state)) return false;
+      const categories = scheme.workerCategories.map((item) => String(item).toLowerCase());
+      return !categories.length || categories.includes(category);
+    });
+  }
+
   return {
     worker,
     wageEntries: wageEntries.filter((entry) => entry.workerId === workerId),
     checkIns: checkIns.filter((entry) => entry.workerId === workerId),
     cases: cases.filter((entry) => entry.workerId === workerId),
+    schemes: matchingSchemes(worker.profile),
   };
 }
 
@@ -916,6 +936,53 @@ const server = http.createServer(async (req, res) => {
     minimumWages.set(key, rate);
     makeAudit('minimum_wage_rate_updated', actor.sub, rate.id, { state, workerCategory, dailyAmount, effectiveFrom });
     jsonResponse(res, 200, { rate: serializeWageRate(rate) });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/worker/schemes') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const worker = Array.from(workers.values()).find((item) => item.id === actor.sub);
+    if (!worker) {
+      jsonResponse(res, 404, { error: 'Worker not found.' });
+      return;
+    }
+    const schemes = getWorkerDashboard(actor.sub).schemes.map((scheme) => ({
+      id: scheme.id, slug: scheme.slug, name: scheme.name, description: scheme.description,
+      eligibility: scheme.eligibility, registrationInstructions: scheme.registrationInstructions,
+      officialUrl: scheme.officialUrl, languages: scheme.languages,
+    }));
+    jsonResponse(res, 200, { schemes });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/ngo/schemes') {
+    const actor = authenticate(req, res, ['ngo_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const slug = String(body.slug || '').trim().toLowerCase();
+    const name = String(body.name || '').trim();
+    const description = String(body.description || '').trim();
+    const eligibility = String(body.eligibility || '').trim();
+    const registrationInstructions = String(body.registrationInstructions || '').trim();
+    if (!slug || !name || !description || !eligibility || !registrationInstructions) {
+      jsonResponse(res, 400, { error: 'Slug, name, description, eligibility, and registration instructions are required.' });
+      return;
+    }
+    const existing = welfareSchemes.get(slug);
+    const scheme = {
+      id: existing?.id || randomUUID(), slug, name, description, eligibility, registrationInstructions,
+      officialUrl: body.officialUrl ? String(body.officialUrl) : null,
+      languages: body.languages && typeof body.languages === 'object' ? body.languages : {},
+      states: Array.isArray(body.states) ? body.states.map(String) : ['All India'],
+      workerCategories: Array.isArray(body.workerCategories) ? body.workerCategories.map(String) : [],
+      minAge: body.minAge === null || body.minAge === undefined || body.minAge === '' ? null : Number(body.minAge),
+      maxAge: body.maxAge === null || body.maxAge === undefined || body.maxAge === '' ? null : Number(body.maxAge),
+      active: body.active !== false, updatedAt: new Date().toISOString(),
+    };
+    welfareSchemes.set(slug, scheme);
+    makeAudit('welfare_scheme_updated', actor.sub, scheme.id, { slug, active: scheme.active });
+    jsonResponse(res, 200, { scheme });
     return;
   }
 
@@ -1529,6 +1596,7 @@ async function start() {
     for (const row of state.revoked) revokedAccounts.add(row.account_id);
     for (const row of state.worksites || []) worksites.set(row.registration_code, { id: row.id, employerId: row.employer_id, name: row.name, registrationCode: row.registration_code, verified: row.verified, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.minimumWages || []) minimumWages.set(`${row.state.toLowerCase()}::${row.worker_category}`, { id: row.id, state: row.state, workerCategory: row.worker_category, dailyAmount: Number(row.daily_amount), currency: row.currency, effectiveFrom: row.effective_from, sourceNote: row.source_note, updatedAt: new Date(row.updated_at).toISOString() });
+    for (const row of state.welfareSchemes || []) welfareSchemes.set(row.slug, { id: row.id, slug: row.slug, name: row.name, description: row.description, eligibility: row.eligibility, registrationInstructions: row.registration_instructions, officialUrl: row.official_url, languages: row.languages || {}, states: row.states || ['All India'], workerCategories: row.worker_categories || [], minAge: row.min_age === null ? null : Number(row.min_age), maxAge: row.max_age === null ? null : Number(row.max_age), active: row.active, updatedAt: new Date(row.updated_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {
