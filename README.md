@@ -5,6 +5,18 @@
 Install dependencies with `npm install`. Start the API with `npm run dev:api`
 and the Vite frontend with `npm run dev`.
 
+### Troubleshooting
+
+- **"Could not reach the server" on login** — the API server is not running.
+  Start it with `npm run dev:api` (it listens on port 5000; the Vite dev
+  server proxies `/api` to it).
+- **"Too many login attempts"** — login rate limiting allows 10 failed
+  attempts per IP every 15 minutes. Successful logins never count against
+  the limit. Restarting the API clears the in-memory buckets.
+- **Old UI after an update** — the service worker caches the app shell.
+  Hard-refresh once (Ctrl+Shift+R); from v2 onward page navigations are
+  network-first, so later deploys appear without a manual refresh.
+
 ## PostgreSQL persistence
 
 Phase 9 uses PostgreSQL (including Supabase PostgreSQL) through `pg`.
