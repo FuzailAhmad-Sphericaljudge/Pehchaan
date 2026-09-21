@@ -143,8 +143,8 @@ function SchemeAdmin() {
 function isOffline(error: unknown) { return Boolean((error as ApiError)?.offline); }
 function translatedCaseType(lang: Language, type: string) {
   const values = lang === "hi"
-    ? { wage_theft: "मजदूरी नहीं मिली", unsafe_site: "असुरक्षित जगह", harassment: "उत्पीड़न" }
-    : { wage_theft: "Unpaid wages", unsafe_site: "Unsafe site", harassment: "Harassment" };
+    ? { wage_theft: "मजदूरी नहीं मिली", unsafe_site: "असुरक्षित जगह", harassment: "उत्पीड़न", debt_bondage: "अग्रिम/बंधुआ मजदूरी" }
+    : { wage_theft: "Unpaid wages", unsafe_site: "Unsafe site", harassment: "Harassment", debt_bondage: "Advance payment / debt bondage" };
   return values[type as keyof typeof values] || type;
 }
 function translatedStatus(lang: Language, status: string) {
