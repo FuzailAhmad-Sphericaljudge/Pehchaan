@@ -116,7 +116,11 @@ export const ngoApi = {
   updateCase: (caseId: string, body: Record<string, unknown>) => request<{ case: NgoCase }>(`/api/ngo/cases/${encodeURIComponent(caseId)}`, { ...json(body), method: "PATCH" }),
   addNote: (caseId: string, body: { author: string; text: string }) => request<{ note: CaseDetail["notes"][number] }>(`/api/ngo/cases/${encodeURIComponent(caseId)}/notes`, json(body)),
   audit: () => request<{ entries: CaseDetail["auditLog"] }>("/api/ngo/audit-log"),
+  alerts: () => request<{ alerts: Alert[]; total: number }>("/api/ngo/alerts"),
+  updateAlert: (alertId: string, body: Record<string, unknown>) => request<{ alert: Alert }>(`/api/ngo/alerts/${encodeURIComponent(alertId)}`, { ...json(body), method: "PATCH" }),
 };
+
+export type Alert = { id: string; caseId: string | null; kind: string; status: string; createdAt: string; dueAt: string; acknowledgedAt: string | null; acknowledgedBy: string | null; actionTaken: string | null; falseAlarmReason: string | null };
 
 export const evidenceApi = {
   createUpload: (caseId: string, body: Record<string, unknown>) => request<{ evidence: Evidence; uploadUrl: string }>(`/api/cases/${encodeURIComponent(caseId)}/evidence`, json(body)),

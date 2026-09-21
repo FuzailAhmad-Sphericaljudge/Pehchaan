@@ -68,10 +68,10 @@ export async function saveState(state) {
     }
     for (const item of state.cases) {
       await client.query(
-        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,updated_at=$9`,
-        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.createdAt, item.updatedAt],
+        `INSERT INTO cases (id, worker_id, type, priority, status, summary, owner, immediate_danger, happening_now, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (id) DO UPDATE SET priority=$4,status=$5,summary=$6,owner=$7,immediate_danger=$8,happening_now=$9,updated_at=$11`,
+        [item.id, item.workerId, item.type, item.priority, item.status, item.summary, item.owner, item.immediateDanger, item.happeningNow, item.createdAt, item.updatedAt],
       );
     }
     for (const item of state.caseNotes) {
@@ -84,7 +84,10 @@ export async function saveState(state) {
         [item.id, item.caseId, item.type, item.fileName, item.storageKey, item.checksum, item.createdAt, item.uploaderId, item.mimeType, item.sizeBytes, item.consent, item.retentionUntil, item.scanStatus, item.uploadedAt, item.available]);
     }
     for (const item of state.alerts) {
-      await client.query('INSERT INTO alerts (id, case_id, channel, recipient, status, acknowledged_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO UPDATE SET status=$5,acknowledged_at=$6', [item.id, item.caseId, item.channel, item.recipient, item.status, item.acknowledgedAt, item.createdAt]);
+      await client.query(`INSERT INTO alerts (id, case_id, worker_id, kind, priority, channel, recipient, status, acknowledged_at, acknowledged_by, action_taken, false_alarm_reason, escalated_at, due_at, location, location_consent, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        ON CONFLICT (id) DO UPDATE SET status=$8,acknowledged_at=$9,acknowledged_by=$10,action_taken=$11,false_alarm_reason=$12,escalated_at=$13`,
+        [item.id, item.caseId, item.workerId, item.kind, item.priority, item.channel, item.recipient, item.status, item.acknowledgedAt, item.acknowledgedBy, item.actionTaken, item.falseAlarmReason, item.escalatedAt, item.dueAt, item.location, item.locationConsent, item.createdAt]);
     }
     for (const item of state.auditLog) {
       await client.query('INSERT INTO audit_logs (id, action, actor, target, details, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING', [item.id, item.action, item.actor, item.target, item.details, item.timestamp]);
