@@ -31,6 +31,7 @@ const legalDocuments = new Map();
 const minimumWages = new Map();
 const welfareSchemes = new Map();
 const workRelationships = new Map();
+const trustedContacts = new Map();
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const smsSessions = new Map();
@@ -47,10 +48,11 @@ const allowedEvidenceTypes = new Map([
 ]);
 const maxEvidenceBytes = 10 * 1024 * 1024;
 const maxEvidencePerCase = 10;
+const maxTrustedContacts = 5;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -632,8 +634,36 @@ function createSafetyAlert({ caseId = null, workerId, kind, location, locationCo
     locationConsent: Boolean(locationConsent), details,
   };
   alerts.unshift(alert);
-  makeAudit('high_risk_alert_created', workerId, caseId || alert.id, { alertId: alert.id, kind, externalNotification: 'stubbed' });
+  const notified = notifyTrustedContacts(workerId, kind, alert);
+  makeAudit('high_risk_alert_created', workerId, caseId || alert.id, { alertId: alert.id, kind, externalNotification: 'stubbed', trustedContactsNotified: notified.length });
   return alert;
+}
+
+function confirmedContacts(workerId) {
+  return Array.from(trustedContacts.values())
+    .filter((item) => item.workerId === workerId && item.status === 'confirmed')
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+
+function notifyTrustedContacts(workerId, kind, alert) {
+  const contacts = confirmedContacts(workerId);
+  const message = contacts.length
+    ? (kind === 'emergency_checkin'
+      ? `Emergency alert: Your contact needs help. Pehchaan recorded an emergency check-in. If you can reach them, please check on them now. Emergency services: 112.`
+      : `Pehchaan safety alert: A safety alert was recorded for your contact. NGO caseworkers are being notified.`)
+    : [];
+  const delivered = [];
+  for (const contact of contacts) {
+    void sendSms(contact.phone, message)
+      .then((result) => {
+        if (result.provider === 'twilio') {
+          makeAudit('trusted_contact_notified', workerId, alert.caseId || alert.id, { contactId: contact.id, alertId: alert.id, channel: 'sms' });
+        }
+      })
+      .catch(() => makeAudit('trusted_contact_notification_failed', workerId, alert.caseId || alert.id, { contactId: contact.id, alertId: alert.id }));
+    delivered.push(contact.id);
+  }
+  return delivered;
 }
 
 function escalateDueAlerts() {
@@ -710,6 +740,82 @@ async function supabaseStorage(pathname, method, body = null) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(String(payload.message || payload.error || 'Storage request failed.'));
   return payload;
+}
+
+function buildWorkerExport(workerId, format = 'json') {
+  const wanted = ['json', 'csv', 'pdf'].includes(String(format).toLowerCase()) ? String(format).toLowerCase() : 'json';
+  const worker = Array.from(workers.values()).find((item) => item.id === workerId);
+  const relationships = Array.from(workRelationships.values()).filter((item) => item.workerId === workerId);
+  const ownWages = wageEntries.filter((item) => item.workerId === workerId);
+  const ownCheckIns = checkIns.filter((item) => item.workerId === workerId);
+  const ownCases = cases.filter((item) => item.workerId === workerId);
+  const data = {
+    exportedAt: new Date().toISOString(),
+    disclaimer: legalDisclaimer,
+    worker: {
+      phone: worker?.phone || '',
+      language: worker?.language || 'en',
+      profile: worker?.profile || {},
+      createdAt: worker?.createdAt || null,
+    },
+    workRelationships: relationships.map((item) => ({ label: item.label, employerName: item.employerName, siteName: item.siteName, category: item.category, startedOn: item.startedOn, endedOn: item.endedOn, active: item.active })),
+    wageHistory: ownWages.map((item) => ({ date: item.date, type: item.type, amount: item.amount, deductions: item.deductions, overtime: item.overtime, source: item.source || 'app', relationship: relationships.find((rel) => rel.id === item.relationshipId)?.label || null })),
+    checkIns: ownCheckIns.map((item) => ({ createdAt: item.createdAt, status: item.status, hazard: item.hazard, notes: item.notes, source: item.source || 'app' })),
+    cases: ownCases.map((item) => ({ id: item.id, type: item.type, status: item.status, priority: item.priority, summary: item.summary, createdAt: item.createdAt, updatedAt: item.updatedAt, relationship: relationships.find((rel) => rel.id === item.relationshipId)?.label || null })),
+    totals: {
+      wageEntries: ownWages.length,
+      totalWageAmount: ownWages.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+      checkIns: ownCheckIns.length,
+      cases: ownCases.length,
+    },
+  };
+  if (wanted === 'json') return { format: 'json', formatLabel: 'JSON', data };
+
+  const csvCell = (value) => {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const rows = [];
+  rows.push(['Section', 'Date', 'Type/Status', 'Amount', 'Details', 'Work relationship'].map(csvCell).join(','));
+  for (const item of data.wageHistory) rows.push(['Wage', item.date, item.type, item.amount, `deductions ${item.deductions} / overtime ${item.overtime} / ${item.source}`, item.relationship || ''].map(csvCell).join(','));
+  for (const item of data.checkIns) rows.push(['Check-in', item.createdAt, item.status, '', item.hazard || item.notes || '', ''].map(csvCell).join(','));
+  for (const item of data.cases) rows.push(['Case', item.createdAt, `${item.type} / ${item.status}`, '', item.summary, item.relationship || ''].map(csvCell).join(','));
+  if (wanted === 'csv') return { format: 'csv', formatLabel: 'CSV', data, body: rows.join('\r\n') };
+
+  return { format: 'pdf', formatLabel: 'PDF', data };
+}
+
+function renderWorkerExportPdf(data, language = 'en') {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const document = new PDFDocument({ margin: 54 });
+    document.on('data', (chunk) => chunks.push(chunk));
+    document.on('end', () => resolve(Buffer.concat(chunks)));
+    document.on('error', reject);
+    const hindiFont = 'C:\\Windows\\Fonts\\Nirmala.ttf';
+    if (language === 'hi' && fs.existsSync(hindiFont)) document.font(hindiFont);
+    document.fontSize(18).text('Pehchaan - My record');
+    document.moveDown(0.5).fontSize(10).text(`Exported: ${new Date(data.exportedAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-IN')}`);
+    document.fontSize(10).text(`Worker phone: ${data.worker.phone}`);
+    document.moveDown(1).fontSize(14).text('Summary');
+    document.fontSize(11).text(`Wage entries: ${data.totals.wageEntries} (total recorded Rs ${data.totals.totalWageAmount})`);
+    document.text(`Safety check-ins: ${data.totals.checkIns}`);
+    document.text(`Cases / complaints: ${data.totals.cases}`);
+    document.moveDown(1).fontSize(14).text('Wage history');
+    if (!data.wageHistory.length) document.fontSize(11).text('No wage entries recorded.');
+    for (const item of data.wageHistory) document.fontSize(11).text(`${new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN')} - ${item.type} - Rs ${item.amount}${item.relationship ? ` (${item.relationship})` : ''}`);
+    document.moveDown(1).fontSize(14).text('Safety check-ins');
+    if (!data.checkIns.length) document.fontSize(11).text('No check-ins recorded.');
+    for (const item of data.checkIns.slice(0, 60)) document.fontSize(11).text(`${new Date(item.createdAt).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-IN')} - ${item.status}${item.hazard ? ` - ${item.hazard}` : ''}`);
+    document.moveDown(1).fontSize(14).text('Cases / complaints');
+    if (!data.cases.length) document.fontSize(11).text('No cases recorded.');
+    for (const item of data.cases) {
+      document.fontSize(11).text(`${item.id} - ${item.type} - ${item.status} (${new Date(item.createdAt).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN')})`);
+      document.fontSize(10).text(item.summary || '', { indent: 12 });
+    }
+    document.moveDown(2).fontSize(9).text(data.disclaimer);
+    document.end();
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -1050,6 +1156,148 @@ const server = http.createServer(async (req, res) => {
     workRelationships.set(relationship.id, relationship);
     makeAudit('work_relationship_updated', actor.sub, relationship.id, { label: relationship.label, active: relationship.active });
     jsonResponse(res, 200, { relationship });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/worker/trusted-contacts') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    jsonResponse(res, 200, { contacts: confirmedContacts(actor.sub).concat(Array.from(trustedContacts.values()).filter((item) => item.workerId === actor.sub && item.status === 'pending').sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))) });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/worker/trusted-contacts') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const name = String(body.name || '').trim();
+    const phone = String(body.phone || '').trim();
+    if (!name || !phone) {
+      jsonResponse(res, 400, { error: 'Name and phone number are required.' });
+      return;
+    }
+    if (!/^\+?[\d\s-]{7,15}$/.test(phone)) {
+      jsonResponse(res, 400, { error: 'Enter a valid phone number.' });
+      return;
+    }
+    const existing = Array.from(trustedContacts.values()).filter((item) => item.workerId === actor.sub && item.status !== 'removed');
+    if (existing.length >= maxTrustedContacts) {
+      jsonResponse(res, 400, { error: `You can save up to ${maxTrustedContacts} trusted contacts.` });
+      return;
+    }
+    const contact = {
+      id: randomUUID(), workerId: actor.sub, name, phone,
+      relationshipLabel: String(body.relationshipLabel || '').trim() || null,
+      status: 'pending', confirmedAt: null, lastTestSentAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    trustedContacts.set(contact.id, contact);
+    makeAudit('trusted_contact_added', actor.sub, contact.id, { name, status: 'pending' });
+    persist();
+    jsonResponse(res, 201, { contact });
+    return;
+  }
+
+  if (req.method === 'PATCH' && pathname.startsWith('/api/worker/trusted-contacts/')) {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const contactId = pathname.split('/')[4];
+    const contact = trustedContacts.get(contactId);
+    if (!contact || contact.workerId !== actor.sub || contact.status === 'removed') {
+      jsonResponse(res, 404, { error: 'Trusted contact not found.' });
+      return;
+    }
+    if (body.action === 'confirm') {
+      contact.status = 'confirmed';
+      contact.confirmedAt = new Date().toISOString();
+      makeAudit('trusted_contact_confirmed', actor.sub, contact.id, { name: contact.name });
+      persist();
+      jsonResponse(res, 200, { contact });
+      return;
+    }
+    if (body.action === 'test') {
+      try {
+        await sendSms(contact.phone, `Pehchaan test alert: This is a sample emergency notification. If a real emergency happens, this number will receive an alert like this. No action is needed now.`);
+        contact.lastTestSentAt = new Date().toISOString();
+        makeAudit('trusted_contact_test_sent', actor.sub, contact.id, { name: contact.name });
+        persist();
+        jsonResponse(res, 200, { contact, sent: true });
+      } catch (error) {
+        jsonResponse(res, 502, { error: error.message || 'Test message could not be sent.' });
+      }
+      return;
+    }
+    const name = body.name !== undefined ? String(body.name).trim() : contact.name;
+    const phone = body.phone !== undefined ? String(body.phone).trim() : contact.phone;
+    if (!name || !phone || !/^\+?[\d\s-]{7,15}$/.test(phone)) {
+      jsonResponse(res, 400, { error: 'Name and a valid phone number are required.' });      return;
+    }
+    contact.name = name;
+    contact.phone = phone;
+    contact.relationshipLabel = body.relationshipLabel !== undefined ? (String(body.relationshipLabel).trim() || null) : contact.relationshipLabel;
+    contact.status = 'pending';
+    contact.confirmedAt = null;
+    makeAudit('trusted_contact_updated', actor.sub, contact.id, { name, status: 'pending' });
+    persist();
+    jsonResponse(res, 200, { contact });
+    return;
+  }
+
+  if (req.method === 'DELETE' && pathname.startsWith('/api/worker/trusted-contacts/')) {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const contactId = pathname.split('/')[4];
+    const contact = trustedContacts.get(contactId);
+    if (!contact || contact.workerId !== actor.sub) {
+      jsonResponse(res, 404, { error: 'Trusted contact not found.' });
+      return;
+    }
+    trustedContacts.delete(contactId);
+    makeAudit('trusted_contact_removed', actor.sub, contactId, { name: contact.name });
+    persist();
+    jsonResponse(res, 204, {});
+    return;  }
+
+  if (req.method === 'GET' && pathname === '/api/worker/export') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    if (!checkRateLimit(`export:${actor.sub}`, 5, 15 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many export requests. Please wait and try again.' });
+      return;
+    }
+    const worker = Array.from(workers.values()).find((item) => item.id === actor.sub);
+    if (!worker) {
+      jsonResponse(res, 404, { error: 'Worker account not found.' });
+      return;
+    }
+    const exportData = buildWorkerExport(actor.sub, url.searchParams.get('format') || 'json');
+    makeAudit('worker_data_exported', actor.sub, actor.sub, { format: exportData.format, formatLabel: exportData.formatLabel });
+    if (exportData.format === 'csv') {
+      res.writeHead(200, {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="pehchaan-my-data-${new Date().toISOString().slice(0, 10)}.csv"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(exportData.body);
+      return;
+    }
+    if (exportData.format === 'pdf') {
+      const pdfBuffer = await renderWorkerExportPdf(exportData.data, worker.language);
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="pehchaan-my-data-${new Date().toISOString().slice(0, 10)}.pdf"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(pdfBuffer);
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="pehchaan-my-data-${new Date().toISOString().slice(0, 10)}.json"`,
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify(exportData.data, null, 2));
     return;
   }
 
@@ -1713,6 +1961,7 @@ async function start() {
     for (const row of state.minimumWages || []) minimumWages.set(`${row.state.toLowerCase()}::${row.worker_category}`, { id: row.id, state: row.state, workerCategory: row.worker_category, dailyAmount: Number(row.daily_amount), currency: row.currency, effectiveFrom: row.effective_from, sourceNote: row.source_note, updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.welfareSchemes || []) welfareSchemes.set(row.slug, { id: row.id, slug: row.slug, name: row.name, description: row.description, eligibility: row.eligibility, registrationInstructions: row.registration_instructions, officialUrl: row.official_url, languages: row.languages || {}, states: row.states || ['All India'], workerCategories: row.worker_categories || [], minAge: row.min_age === null ? null : Number(row.min_age), maxAge: row.max_age === null ? null : Number(row.max_age), active: row.active, updatedAt: new Date(row.updated_at).toISOString() });
     for (const row of state.workRelationships || []) workRelationships.set(row.id, { id: row.id, workerId: row.worker_id, label: row.label, employerName: row.employer_name, siteName: row.site_name, category: row.category, startedOn: row.started_on, endedOn: row.ended_on, active: row.active, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.trustedContacts || []) trustedContacts.set(row.id, { id: row.id, workerId: row.worker_id, name: row.name, phone: row.phone, relationshipLabel: row.relationship_label, status: row.status, confirmedAt: row.confirmed_at ? new Date(row.confirmed_at).toISOString() : null, lastTestSentAt: row.last_test_sent_at ? new Date(row.last_test_sent_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {
