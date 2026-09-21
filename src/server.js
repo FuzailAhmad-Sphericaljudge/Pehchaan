@@ -1581,15 +1581,16 @@ const server = http.createServer(async (req, res) => {
       }
 
       cases.push(newCase);
-      const highRisk = newCase.immediateDanger || newCase.happeningNow;
+      const highRisk = newCase.immediateDanger || newCase.happeningNow || newCase.type === 'debt_bondage';
       const alert = highRisk ? createSafetyAlert({
         caseId: newCase.id, workerId: newCase.workerId, kind: 'high_risk_complaint',
         location: body.location, locationConsent: Boolean(body.locationConsent),
-        details: { immediateDanger: newCase.immediateDanger, happeningNow: newCase.happeningNow },
+        details: { immediateDanger: newCase.immediateDanger, happeningNow: newCase.happeningNow, debtBondage },
       }) : null;
       makeAudit('case_created', newCase.workerId, newCase.id, { type: newCase.type });
       makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, aiTriage);
-      jsonResponse(res, 201, { case: newCase, ...(alert ? { alert, disclaimer: emergencyDisclaimer, emergencyNumber: '112' } : {}) });
+      const disclaimer = newCase.type === 'debt_bondage' ? `${emergencyDisclaimer} Debt bondage is illegal. Pehchaan organizes and routes this information to trusted organizations; it does not itself rescue or represent the worker.` : emergencyDisclaimer;
+      jsonResponse(res, 201, { case: newCase, ...(alert ? { alert, disclaimer, emergencyNumber: '112' } : {}) });
       return;
     } catch (error) {
       jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
