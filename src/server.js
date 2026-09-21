@@ -83,6 +83,7 @@ function buildAiTriage(summary, { immediateDanger = false, happeningNow = false,
   if (urgentHits.length) { score += Math.min(20, urgentHits.length * 10); signals.push(`urgent_terms:${urgentHits.join(',')}`); }
   if (reviewHits.length) { score += Math.min(15, reviewHits.length * 5); signals.push(`review_terms:${reviewHits.join(',')}`); }
   if (type === 'unsafe_site' || type === 'harassment') { score += 10; signals.push(`case_type:${type}`); }
+  if (type === 'debt_bondage') { score += 45; signals.push('case_type:debt_bondage'); }
   const category = score >= 60 ? 'Urgent' : score >= 20 ? 'Needs review' : 'Routine';
   return { category, score: Math.min(score, 100), signals, generatedBy: 'rules-v1', generatedAt: new Date().toISOString(), humanDecision: null };
 }
