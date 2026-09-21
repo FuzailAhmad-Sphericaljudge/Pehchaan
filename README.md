@@ -36,6 +36,17 @@ same worker/case/check-in flows as the app. Set `WHATSAPP_VERIFY_TOKEN` and
 For outbound provider messages, configure the Twilio WhatsApp variables only
 after a WhatsApp Business sender has been approved.
 
+## SMS / USSD fallback
+
+Feature-phone channels are available through `POST /api/sms/webhook` and
+`POST /api/ussd`. SMS accepts `SAFE`, `HELP`, `PAY`, `COMPLAINT`, and `STATUS`
+or numbered replies; USSD returns a short `CON` menu and `END` responses.
+Local development uses `SMS_PROVIDER=stub`. For production, configure a
+gateway such as Twilio SMS and point its inbound SMS webhook at the SMS route.
+Every SMS/USSD action creates the same wage, check-in, case, alert, and audit
+records as the app channels. Location is never collected by these fallback
+channels.
+
 ## AI-assisted triage
 
 New complaints receive a transparent, rules-based AI suggestion (`Urgent`,

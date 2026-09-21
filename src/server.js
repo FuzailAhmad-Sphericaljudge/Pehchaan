@@ -30,6 +30,7 @@ const worksites = new Map();
 const legalDocuments = new Map();
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
+const smsSessions = new Map();
 const alertAckWindowMs = Number(process.env.ALERT_ACK_WINDOW_MINUTES || 15) * 60 * 1000;
 const emergencyDisclaimer = 'Pehchaan does not replace emergency services, police, courts, or labour departments. It helps workers and trusted organizations organize information and access support more effectively.';
 const otpChallenges = new Map();
@@ -179,6 +180,71 @@ function whatsappText(language, key) {
     welcome: { en: 'Welcome to Pehchaan. Reply REGISTER to link this WhatsApp number, or open the app for secure OTP linking.', hi: 'पहचान में आपका स्वागत है। यह WhatsApp नंबर जोड़ने के लिए REGISTER भेजें, या सुरक्षित OTP linking के लिए ऐप खोलें।', bn: 'পরিচয়ে স্বাগতম। এই WhatsApp নম্বর যুক্ত করতে REGISTER পাঠান, অথবা নিরাপদ OTP linking-এর জন্য অ্যাপ খুলুন।', ta: 'Pehchaan-க்கு வரவேற்கிறோம். இந்த WhatsApp எண்ணை இணைக்க REGISTER அனுப்பவும் அல்லது பாதுகாப்பான OTP linking-க்கு பயன்பாட்டைத் திறக்கவும்.', te: 'Pehchaan కు స్వాగతం. ఈ WhatsApp నంబర్‌ను లింక్ చేయడానికి REGISTER పంపండి లేదా సురక్షిత OTP linking కోసం యాప్ తెరవండి.' },
   };
   return text[key][language] || text[key].en;
+}
+
+function smsMenu(language = 'hi') {
+  return language === 'en'
+    ? 'Pehchaan: Reply 1 SAFE, 2 HELP, 3 PAY, 4 COMPLAINT, 5 STATUS. Reply HI or EN.'
+    : 'पहचान: 1 सुरक्षित, 2 मदद, 3 मजदूरी, 4 शिकायत, 5 स्थिति। HI या EN भेजें।';
+}
+
+function smsReply(res, message) {
+  res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end(message);
+}
+
+async function sendSms(to, message) {
+  if (process.env.SMS_PROVIDER !== 'twilio') return { provider: 'stub' };
+  if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.SMS_FROM) throw new Error('SMS provider is not configured.');
+  const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
+    method: 'POST', headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ From: process.env.SMS_FROM, To: to, Body: message }),
+  });
+  if (!response.ok) throw new Error('SMS provider rejected the message.');
+  return { provider: 'twilio' };
+}
+
+async function handleSmsMessage(req, res) {
+  const body = await parseBody(req);
+  const phone = whatsappPhone(body.From || body.from || body.phone || body.Mobile);
+  const text = String(body.Body || body.body || body.text || '').trim();
+  if (!phone) { smsReply(res, 'Phone number missing.'); return; }
+  let session = smsSessions.get(phone) || { phone, workerId: null, language: 'hi', state: 'menu', data: {} };
+  const upper = text.toUpperCase();
+  if (upper === 'HI' || upper === 'HINDI') session.language = 'hi';
+  if (upper === 'EN' || upper === 'ENGLISH') session.language = 'en';
+  const worker = ensureWorker(phone);
+  session.workerId = worker.id;
+  if (upper === 'SAFE' || text === '1') {
+    const checkIn = { id: randomUUID(), workerId: worker.id, status: 'safe', hazard: null, locationConsent: false, location: null, notes: 'SMS check-in', createdAt: new Date().toISOString(), source: 'sms' };
+    checkIns.push(checkIn); makeAudit('check_in_created', worker.id, checkIn.id, { source: 'sms' }); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, session.language === 'en' ? `Safe check-in recorded.\\n${smsMenu('en')}` : `सुरक्षित जांच दर्ज।\\n${smsMenu('hi')}`); return;
+  }
+  if (upper === 'HELP' || text === '2') {
+    const checkIn = { id: randomUUID(), workerId: worker.id, status: 'unsafe', hazard: 'SMS distress', locationConsent: false, location: null, notes: 'SMS help request', createdAt: new Date().toISOString(), source: 'sms' };
+    checkIns.push(checkIn);     createSafetyAlert({ workerId: worker.id, kind: 'emergency_checkin', location: null, locationConsent: false, details: { source: 'sms' } }); makeAudit('check_in_created', worker.id, checkIn.id, { source: 'sms' }); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, session.language === 'en' ? `Help alert sent. Call 112 if in immediate danger.\\n${smsMenu('en')}` : `मदद का अलर्ट भेजा गया। तत्काल खतरे में 112 कॉल करें।\\n${smsMenu('hi')}`); return;
+  }
+  if (upper === 'PAY' || text === '3') { session.state = 'wage_amount'; smsSessions.set(phone, session); smsReply(res, session.language === 'en' ? 'Reply amount received, e.g. PAY 500.' : 'मिली रकम भेजें, जैसे PAY 500।'); return; }
+  if (session.state === 'wage_amount' || upper.startsWith('PAY ')) {
+    const amount = Number(text.replace(/[^\d.]/g, ''));
+    if (!Number.isFinite(amount) || amount <= 0) { smsReply(res, 'Reply amount, e.g. PAY 500.'); return; }
+    const entry = { id: randomUUID(), workerId: worker.id, date: new Date().toISOString(), type: 'received', amount, deductions: 0, overtime: 0, proofFileId: null, createdAt: new Date().toISOString(), source: 'sms' };
+    wageEntries.push(entry); makeAudit('wage_entry_created', worker.id, entry.id, { source: 'sms' }); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, `₹${amount} wage saved.\\n${smsMenu(session.language)}`); return;
+  }
+  if (upper === 'COMPLAINT' || text === '4') { session.state = 'complaint'; smsSessions.set(phone, session); smsReply(res, session.language === 'en' ? 'Reply COMPLAINT followed by a short description.' : 'COMPLAINT के बाद छोटी समस्या लिखकर भेजें।'); return; }
+  if (session.state === 'complaint' || upper.startsWith('COMPLAINT ')) {
+    const summary = text.replace(/^COMPLAINT\s*/i, '').trim();
+    if (!summary) { smsReply(res, 'Reply COMPLAINT followed by your problem.'); return; }
+    const newCase = { id: `case-${Date.now()}`, workerId: worker.id, type: 'other', priority: 'medium', status: 'new', summary, owner: null, immediateDanger: false, happeningNow: false, aiTriage: buildAiTriage(summary), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), source: 'sms' };
+    cases.push(newCase); makeAudit('case_created', worker.id, newCase.id, { source: 'sms' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, newCase.aiTriage); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, `Case ${newCase.id} created. Reply 5 for status.\\n${smsMenu(session.language)}`); return;
+  }
+  if (upper === 'STATUS' || text === '5') {
+    const ownCases = cases.filter((item) => item.workerId === worker.id).slice(-3);
+    smsSessions.set(phone, { ...session, state: 'menu' });
+    smsReply(res, ownCases.length ? ownCases.map((item) => `${item.id}: ${item.status}`).join('\\n') : 'No cases found.');
+    return;
+  }
+  smsSessions.set(phone, session); smsReply(res, smsMenu(session.language));
 }
 
 async function handleWhatsAppMessage(req, res) {
@@ -602,6 +668,35 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && pathname === '/api/whatsapp/webhook') {
     try { await handleWhatsAppMessage(req, res); } catch (error) { jsonResponse(res, 400, { error: error.message || 'WhatsApp message could not be handled.' }); }
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/sms/webhook') {
+    try { await handleSmsMessage(req, res); } catch (error) { smsReply(res, `ERROR: ${error.message || 'SMS could not be handled.'}`); }
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/ussd') {
+    try {
+      const body = await parseBody(req);
+      const phone = whatsappPhone(body.phoneNumber || body.phone || body.MSISDN);
+      const text = String(body.text || '').trim();
+      const worker = ensureWorker(phone);
+      const language = worker.language === 'en' ? 'en' : 'hi';
+      const menu = language === 'en' ? 'CON Pehchaan\\n1 Safe\\n2 Need help\\n3 Case status\\n4 NGO helpline' : 'CON पहचान\\n1 सुरक्षित\\n2 मदद चाहिए\\n3 मामले की स्थिति\\n4 NGO हेल्पलाइन';
+      if (!text) { smsReply(res, menu); return; }
+      const choice = text.split('*').pop();
+      if (choice === '1') {
+        const checkIn = { id: randomUUID(), workerId: worker.id, status: 'safe', hazard: null, locationConsent: false, location: null, notes: 'USSD check-in', createdAt: new Date().toISOString(), source: 'ussd' };
+        checkIns.push(checkIn); makeAudit('check_in_created', worker.id, checkIn.id, { source: 'ussd' }); smsReply(res, language === 'en' ? 'END Safe check-in recorded.' : 'END सुरक्षित जांच दर्ज।'); return;
+      }
+      if (choice === '2') {
+        createSafetyAlert({ workerId: worker.id, kind: 'emergency_checkin', location: null, locationConsent: false, details: { source: 'ussd' } }); makeAudit('ussd_help_requested', worker.id, worker.id, {}); smsReply(res, language === 'en' ? 'END Help alert sent. Call 112 if in danger.' : 'END मदद का अलर्ट भेजा गया। खतरे में 112 कॉल करें।'); return;
+      }
+      if (choice === '3') { smsReply(res, `END ${cases.filter((item) => item.workerId === worker.id).slice(-3).map((item) => `${item.id}: ${item.status}`).join(', ') || (language === 'en' ? 'No cases.' : 'कोई मामला नहीं।')}`); return; }
+      if (choice === '4') { smsReply(res, `END ${process.env.NGO_HELPLINE || 'Please contact your local NGO helpline.'}`); return; }
+      smsReply(res, menu);
+    } catch (error) { smsReply(res, `END ERROR: ${error.message || 'USSD unavailable.'}`); }
     return;
   }
 
