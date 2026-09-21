@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -31,8 +31,9 @@ export async function loadState() {
     query('SELECT * FROM sessions'),
     query('SELECT account_id FROM revoked_accounts'),
     query('SELECT * FROM worksites'),
+    query('SELECT * FROM legal_documents'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows };
 }
 
 export async function saveState(state) {
@@ -108,6 +109,9 @@ export async function saveState(state) {
     }
     for (const item of state.worksites || []) {
       await client.query('INSERT INTO worksites (id, employer_id, name, registration_code, verified, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING', [item.id, item.employerId, item.name, item.registrationCode, item.verified, item.createdAt]);
+    }
+    for (const item of state.legalDocuments || []) {
+      await client.query('INSERT INTO legal_documents (id, case_id, document_type, language, content, reviewed_by, reviewed_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (id) DO UPDATE SET content=$5,reviewed_by=$6,reviewed_at=$7', [item.id, item.caseId, item.documentType, item.language, item.content, item.reviewedBy, item.reviewedAt, item.createdAt]);
     }
     await client.query('COMMIT');
   } catch (error) {

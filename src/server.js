@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createHmac, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import QRCode from 'qrcode';
+import PDFDocument from 'pdfkit';
 import { closeDatabase, databaseConfigured, loadState, saveState } from './db.js';
 
 const PORT = Number(process.env.PORT || 5000);
@@ -26,6 +27,8 @@ const alerts = [];
 const employerWageRecords = [];
 const employerInterest = [];
 const worksites = new Map();
+const legalDocuments = new Map();
+const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const alertAckWindowMs = Number(process.env.ALERT_ACK_WINDOW_MINUTES || 15) * 60 * 1000;
 const emergencyDisclaimer = 'Pehchaan does not replace emergency services, police, courts, or labour departments. It helps workers and trusted organizations organize information and access support more effectively.';
@@ -43,7 +46,7 @@ const maxEvidencePerCase = 10;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -94,6 +97,57 @@ function employerPatternSignals() {
     existing.cases.push(item.id);
     existing.workers.add(item.workerId);
     groups.set(employer, existing);
+  }
+
+  function legalDocumentContent(targetCase, language, type, edits = {}) {
+    const worker = Array.from(workers.values()).find((item) => item.id === targetCase.workerId);
+    const profile = worker?.profile || {};
+    const isWage = type === 'wage_notice';
+    const title = isWage ? (language === 'hi' ? 'मजदूरी वसूली नोटिस' : 'Wage Recovery Notice') : (language === 'hi' ? 'सुरक्षा घटना रिपोर्ट' : 'Safety Incident Report');
+    const plain = isWage
+      ? (language === 'hi' ? 'यह दस्तावेज़ बकाया मजदूरी और भुगतान के अंतर को स्पष्ट करने के लिए तैयार किया गया है।' : 'This document records the difference between promised and received wages for review and recovery.')
+      : (language === 'hi' ? 'यह रिपोर्ट कार्यस्थल की सुरक्षा घटना और सहायता के लिए उपलब्ध जानकारी को व्यवस्थित करती है।' : 'This report organizes the available information about a workplace safety incident for review and support.');
+    return {
+      title: edits.title || title,
+      plainLanguage: edits.plainLanguage || plain,
+      date: new Date().toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN'),
+      workerPhone: worker?.phone || '',
+      employer: profile.employer || '',
+      worksite: profile.worksite || '',
+      summary: edits.summary || targetCase.summary,
+      promisedAmount: profile.wagePromise || '',
+      receivedAmount: '',
+      complaintDate: new Date(targetCase.createdAt).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN'),
+      evidenceReferences: evidenceItems.filter((item) => item.caseId === targetCase.id).map((item) => item.fileName),
+      disclaimer: legalDisclaimer,
+      documentType: type,
+    };
+  }
+
+  function createPdf(documentData, language) {
+    return new Promise((resolve, reject) => {
+      const chunks = [];
+      const document = new PDFDocument({ margin: 54 });
+      document.on('data', (chunk) => chunks.push(chunk));
+      document.on('end', () => resolve(Buffer.concat(chunks)));
+      document.on('error', reject);
+      const font = language === 'hi' && fs.existsSync('C:\\Windows\\Fonts\\Nirmala.ttf') ? 'C:\\Windows\\Fonts\\Nirmala.ttf' : undefined;
+      if (font) document.font(font);
+      document.fontSize(18).text(documentData.title, { align: 'center' });
+      document.moveDown().fontSize(10).text(`Prepared: ${documentData.date}`);
+      document.moveDown().fontSize(12).text(documentData.plainLanguage);
+      document.moveDown().fontSize(12).text(`Worker phone: ${documentData.workerPhone}`);
+      document.text(`Employer: ${documentData.employer || 'Not provided'}`);
+      document.text(`Worksite: ${documentData.worksite || 'Not provided'}`);
+      document.text(`Complaint date: ${documentData.complaintDate}`);
+      if (documentData.promisedAmount) document.text(`Promised amount: ${documentData.promisedAmount}`);
+      if (documentData.receivedAmount) document.text(`Received amount: ${documentData.receivedAmount}`);
+      document.moveDown().fontSize(12).text('Details / विवरण');
+      document.moveDown(0.5).fontSize(11).text(documentData.summary || 'No additional details provided.');
+      if (documentData.evidenceReferences.length) document.moveDown().text(`Evidence references: ${documentData.evidenceReferences.join(', ')}`);
+      document.moveDown(2).fontSize(9).text(documentData.disclaimer);
+      document.end();
+    });
   }
   return Array.from(groups.values())
     .filter((item) => item.workers.size >= 2)
@@ -1095,6 +1149,42 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && pathname === '/api/ngo/cases') {
     if (!authenticate(req, res, ['ngo_caseworker', 'ngo_admin'])) return;
     jsonResponse(res, 200, { cases: cases.map((item) => ({ ...item, aiSummary: buildAutoSummary(item) })), total: cases.length, auditLog: auditLog.slice(0, 5) });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname.match(/^\/api\/cases\/[^/]+\/legal-documents$/)) {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const caseId = pathname.split('/')[3];
+    const targetCase = findCase(caseId);
+    if (!targetCase || (actor.role === 'worker' && targetCase.workerId !== actor.sub) || (actor.role !== 'worker' && actor.role !== 'ngo_admin' && targetCase.owner !== actor.sub)) {
+      jsonResponse(res, 404, { error: 'Case not found.' }); return;
+    }
+    const body = await parseBody(req);
+    const type = body.documentType === 'safety_report' ? 'safety_report' : 'wage_notice';
+    const language = body.language === 'hi' ? 'hi' : 'en';
+    const content = legalDocumentContent(targetCase, language, type, body.edits || {});
+    const document = { id: randomUUID(), caseId, documentType: type, language, content, reviewedBy: actor.role === 'worker' ? null : actor.sub, reviewedAt: actor.role === 'worker' ? null : new Date().toISOString(), createdAt: new Date().toISOString() };
+    legalDocuments.set(document.id, document);
+    makeAudit('legal_document_generated', actor.sub, caseId, { documentId: document.id, documentType: type, language, reviewed: Boolean(document.reviewedBy) });
+    jsonResponse(res, 201, { document: { id: document.id, caseId, documentType: type, language, content, reviewed: Boolean(document.reviewedBy), downloadUrl: `/api/legal-documents/${document.id}/pdf` } });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname.match(/^\/api\/legal-documents\/[^/]+\/pdf$/)) {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const document = legalDocuments.get(pathname.split('/')[3]);
+    const targetCase = document && findCase(document.caseId);
+    if (!document || !targetCase || (actor.role === 'worker' && targetCase.workerId !== actor.sub) || (actor.role !== 'worker' && actor.role !== 'ngo_admin' && targetCase.owner !== actor.sub)) {
+      jsonResponse(res, 404, { error: 'Document not found.' }); return;
+    }
+    if (!document.reviewedBy && actor.role === 'worker') {
+      jsonResponse(res, 409, { error: 'This document needs NGO caseworker review before download.' }); return;
+    }
+    const pdf = await createPdf(document.content, document.language);
+    res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="pehchaan-${document.documentType}-${document.language}.pdf"` });
+    res.end(pdf);
     return;
   }
 

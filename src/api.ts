@@ -145,4 +145,14 @@ export const evidenceApi = {
   downloadUrl: (evidenceId: string) => request<{ url: string }>(`/api/evidence/${encodeURIComponent(evidenceId)}/download-url`),
 };
 
+export const legalDocumentApi = {
+  generate: (caseId: string, body: Record<string, unknown>) => request<{ document: { id: string; downloadUrl: string; reviewed: boolean; content: Record<string, unknown> } }>(`/api/cases/${encodeURIComponent(caseId)}/legal-documents`, json(body)),
+  download: async (documentId: string) => {
+    const session = JSON.parse(localStorage.getItem("pehchaan-ngo-session") || localStorage.getItem("pehchaan-worker-session") || "null") as { token?: string } | null;
+    const response = await fetch(`/api/legal-documents/${encodeURIComponent(documentId)}/pdf`, { headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {} });
+    if (!response.ok) throw new Error((await response.text()) || "Document download failed.");
+    return URL.createObjectURL(await response.blob());
+  },
+};
+
 export type { ApiError };

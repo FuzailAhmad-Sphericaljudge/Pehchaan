@@ -68,6 +68,15 @@ exposing worker data publicly. Employer compliance is shown only as an
 aggregate response signal. Workers see a simple four-stage timeline for their
 own cases, while NGO notes and evidence remain private.
 
+## Legal aid documents
+
+NGO caseworkers can generate a wage recovery notice or safety incident report
+from a case in English or Hindi. The document is created as a PDF with a
+plain-language explanation, structured case fields, evidence references, and
+the legal-advice disclaimer. Generation is review-first: worker-created
+previews cannot be downloaded until an NGO caseworker or admin has reviewed
+the document, and no document is sent automatically.
+
 ## Secure evidence storage
 
 Evidence uses a private Supabase Storage bucket. Set `SUPABASE_URL`,
