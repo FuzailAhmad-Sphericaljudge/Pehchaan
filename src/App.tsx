@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, authApi, CaseDetail, Dashboard, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, schemeApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
+import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
 import { addOfflineItem, listOfflineItems, OfflineItem, removeOfflineItem, updateOfflineItem } from "./offline";
 
 const baseLabels = {
@@ -11,6 +11,7 @@ const baseLabels = {
     promised: "वादा की गई रकम", received: "मिली रकम", date: "तारीख", note: "काम/नियोक्ता का नोट", save: "सहेजें", safe: "मैं सुरक्षित हूं", help: "मुझे मदद चाहिए", summary: "समस्या का विवरण", type: "समस्या का प्रकार", submit: "भेजें", loading: "लोड हो रहा है...", retry: "फिर कोशिश करें", offline: "आप ऑफलाइन दिख रहे हैं। कनेक्शन आने पर यह काम अपने आप दोबारा कोशिश होगा।", error: "जानकारी लोड नहीं हो सकी। कृपया कनेक्शन जांचकर फिर कोशिश करें।", pending: "भेजने की कतार में", noData: "अभी कोई जानकारी नहीं है।", listen: "सुनें", stopListening: "रोकें", speakComplaint: "बोलकर समस्या बताएं", listening: "सुन रहा हूं...", voiceUnavailable: "इस डिवाइस में आवाज़ की सुविधा उपलब्ध नहीं है। आप लिखकर जारी रख सकते हैं।", voiceGuide: "आवाज़ में मदद", voiceGuideText: "पहले अपना मोबाइल नंबर डालें। फिर OTP बोलकर या लिखकर सत्यापित करें।", waitingSync: "सिंक होने का इंतज़ार", syncFailed: "सिंक नहीं हो सका। लॉगिन जांचें और फिर कोशिश करें।",
     schemes: "आपके लिए योजनाएं", schemesNote: "आप इन सरकारी योजनाओं के लिए पात्र हो सकते हैं। यह पक्की पात्रता नहीं है — आवेदन से पहले आधिकारिक स्रोत ज़रूर जांचें।", schemesEmpty: "अभी कोई संभावित योजना नहीं मिली। अपना राज्य, उम्र और काम की श्रेणी मेरी प्रोफ़ाइल में भरें ताकि हम सुझाव दे सकें।", schemesProfileHint: "अपना राज्य, उम्र और काम की श्रेणी भरें ताकि आपके लिए उपयुक्त योजनाएं दिख सकें।", whoQualifies: "कौन पात्र हो सकता है", howToStart: "कैसे शुरू करें", officialLink: "आधिकारिक जानकारी", profile: "मेरी प्रोफ़ाइल", profileNote: "यह जानकारी केवल आपके लिए संभावित सरकारी योजनाएं सुझाने के काम आती है। कोई भी जानकारी खाली छोड़ सकते हैं।", state: "राज्य", age: "उम्र", workCategory: "काम की श्रेणी", profileSaved: "प्रोफ़ाइल सहेज ली गई।",
     workRelationships: "काम के रिश्ते", workRelationshipsNote: "आप एक साथ कई काम कर सकते हैं — हर काम/नियोक्ता का अलग रिकॉर्ड रखें ताकि हर एक की कमाई और शिकायत अलग-अलग ट्रैक हो।", addRelationship: "नया काम जोड़ें", relLabel: "काम का नाम", relLabelHint: "जैसे: शाम की डिलीवरी", employerName: "नियोक्ता (वैकल्पिक)", siteName: "साइट/जगह (वैकल्पिक)", relCategory: "काम की श्रेणी (वैकल्पिक)", startedOn: "शुरू कब किया", activeRel: "चालू", endedRel: "बंद", endRel: "यह काम खत्म हो गया", reopenRel: "दोबारा चालू करें", relHistoryNote: "बंद किए गए काम भी आपके रिकॉर्ड में सुरक्षित रहते हैं — आप बाद में उन पर शिकायत कर सकते हैं।", relSaved: "काम का रिकॉर्ड सहेज लिया गया।", whichJob: "किस काम/नियोक्ता के बारे में है?", whichJobOptional: "किस काम/नियोक्ता के बारे में है? (वैकल्पिक)", selectJob: "कोई काम चुनें", totalIncome: "कुल कमाई", incomeByJob: "काम के हिसाब से कमाई", unlinkedIncome: "बिना लेबल वाली कमाई", forComplaint: "शिकायत के लिए",
+    contacts: "भरोसेमंद संपर्क", contactsNote: "आपात स्थिति में इन संपर्कों को सूचना भेजी जाएगी। हर संपर्क को आपकी सहमति के बाद ही इस्तेमाल किया जाएगा।", addContact: "संपर्क जोड़ें", contactName: "नाम", contactPhone: "मोबाइल नंबर", contactRelation: "रिश्ता (वैकल्पिक)", contactRelationHint: "जैसे: भाई, पत्नी, मित्र", pendingContact: "पुष्टि बाकी", confirmedContact: "पुष्ट", confirmContact: "पुष्ट करें", contactConfirmText: "क्या आप पुष्ट करते हैं कि यह व्यक्ति आपकी आपात स्थिति की सूचना पाने के लिए सहमत है?", testContact: "टेस्ट अलर्ट भेजें", testSent: "टेस्ट संदेश भेज दिया गया।", editContact: "बदलें", removeContact: "हटाएं", contactRemoved: "संपर्क हटा दिया गया।", contactLimit: "अधिकतम 5 संपर्क जोड़ सकते हैं।", contactsEmpty: "अभी कोई संपर्क नहीं।", contactsEmergencyNote: "यह सुविधा आपात सेवाओं (112) का विकल्प नहीं है।", downloadData: "मेरा डेटा डाउनलोड करें", downloadDataNote: "अपनी मजदूरी, सुरक्षा जांच और शिकायतों का पूरा रिकॉर्ड डाउनलोड करें — PDF, CSV या JSON में। यह आपका अपना रिकॉर्ड है; किसी की अनुमति ज़रूरी नहीं।", downloadPdf: "PDF", downloadCsv: "CSV", downloadJson: "JSON", downloadStarted: "डाउनलोड शुरू।", downloadFailed: "डाउनलोड नहीं हो सका। फिर कोशिश करें।", exportContactsHeading: "भरोसेमंद संपर्क", exportProfileHeading: "मेरी प्रोफ़ाइल",
   },
   en: {
     home: "Home", how: "How It Works", workers: "For Workers", orgs: "For Organizations", safety: "Safety", about: "About", join: "Join the Pilot",
@@ -18,6 +19,7 @@ const baseLabels = {
     promised: "Promised amount", received: "Received amount", date: "Date", note: "Employer/site note", save: "Save", safe: "I'm safe", help: "I need help", summary: "Problem summary", type: "Problem type", submit: "Submit", loading: "Loading...", retry: "Try again", offline: "You appear to be offline. This will retry automatically when your connection returns.", error: "Could not load your information. Please check your connection and try again.", pending: "Queued to send", noData: "Nothing here yet.", listen: "Listen", stopListening: "Stop", speakComplaint: "Describe by voice", listening: "Listening...", voiceUnavailable: "Voice is not available on this device. You can continue by typing.", voiceGuide: "Voice help", voiceGuideText: "Enter your mobile number first. Then speak or type the OTP to verify.", waitingSync: "Waiting to sync", syncFailed: "Sync failed. Check your login and try again.",
     schemes: "Schemes for you", schemesNote: "You may be eligible for these government schemes. This is not a guarantee — always check the official source before applying.", schemesEmpty: "No possible matches yet. Add your state, age, and work category in My profile so we can suggest schemes.", schemesProfileHint: "Add your state, age, and work category to see schemes that may fit you.", whoQualifies: "Who may qualify", howToStart: "How to start", officialLink: "Official information", profile: "My profile", profileNote: "Used only to suggest government schemes you may be eligible for. You can leave any field blank.", state: "State", age: "Age", workCategory: "Work category", profileSaved: "Profile saved.",
     workRelationships: "Work relationships", workRelationshipsNote: "You can work several jobs at once. Keep a separate record for each job/employer so income and complaints are tracked for each one.", addRelationship: "Add a work relationship", relLabel: "Work name", relLabelHint: "e.g. Evening delivery gig", employerName: "Employer (optional)", siteName: "Site/location (optional)", relCategory: "Work category (optional)", startedOn: "Started on", activeRel: "Active", endedRel: "Ended", endRel: "This work has ended", reopenRel: "Reactivate", relHistoryNote: "Ended work stays in your records so you can refer to it or file a complaint later.", relSaved: "Work relationship saved.", whichJob: "Which work/employer is this about?", whichJobOptional: "Which work/employer is this about? (optional)", selectJob: "Select a work", totalIncome: "Total income", incomeByJob: "Income by work", unlinkedIncome: "Unlabeled income", forComplaint: "For complaint",
+    contacts: "Trusted contacts", contactsNote: "These contacts are notified during an emergency check-in or escalation. Each contact is only used for real alerts after you confirm it.", addContact: "Add contact", contactName: "Name", contactPhone: "Mobile number", contactRelation: "Relationship (optional)", contactRelationHint: "e.g. brother, spouse, friend", pendingContact: "Confirmation pending", confirmedContact: "Confirmed", confirmContact: "Confirm", contactConfirmText: "Do you confirm this person has agreed to receive your emergency alerts?", testContact: "Send test alert", testSent: "Test message sent.", editContact: "Edit", removeContact: "Remove", contactRemoved: "Contact removed.", contactLimit: "You can add up to 5 trusted contacts.", contactsEmpty: "No contacts yet.", contactsEmergencyNote: "This feature does not replace emergency services (112).", downloadData: "Download my data", downloadDataNote: "Download your complete record — wage history, check-ins, and complaints — as PDF, CSV, or JSON. This is your own record; no approval needed.", downloadPdf: "PDF", downloadCsv: "CSV", downloadJson: "JSON", downloadStarted: "Download started.", downloadFailed: "Download failed. Please try again.", exportContactsHeading: "Trusted contacts", exportProfileHeading: "My profile",
   },
 } as const;
 
@@ -57,6 +59,61 @@ function Schemes({ lang, dashboard }: { lang: Language; dashboard: Dashboard }) 
   return <><h1>{t.schemes}</h1><p className="helper">{t.schemesNote}</p><div className="detail-grid">{schemes.map((scheme) => <section className="list-panel" key={scheme.id}><h2>{scheme.name}</h2><p>{scheme.description}</p><p><strong>{t.whoQualifies}:</strong> {scheme.eligibility}</p><p><strong>{t.howToStart}:</strong> {scheme.registrationInstructions}</p>{scheme.officialUrl && <a className="button button-small" href={scheme.officialUrl} target="_blank" rel="noreferrer">{t.officialLink}</a>}</section>)}</div>{!schemes.length && <div className="list-panel"><p>{t.schemesEmpty}</p></div>}</>;
 }
 
+function Contacts({ lang, dashboard }: { lang: Language; dashboard: Dashboard }) {
+  const t = labels[lang]; const [contacts, setContacts] = React.useState<TrustedContact[]>([]); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState(""); const [message, setMessage] = React.useState("");
+  const [editing, setEditing] = React.useState<TrustedContact | null>(null); const [form, setForm] = React.useState({ name: "", phone: "", relationshipLabel: "" });
+  const load = React.useCallback(async () => { setLoading(true); try { setContacts((await trustedContactApi.list()).contacts); setError(""); } catch { setError(t.error); } finally { setLoading(false); } }, [t.error]);
+  React.useEffect(() => { void load(); }, [load]);
+  const startEdit = (contact: TrustedContact) => { setEditing(contact); setForm({ name: contact.name, phone: contact.phone, relationshipLabel: contact.relationshipLabel || "" }); setMessage(""); };
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setMessage("");
+    try {
+      if (editing) { await trustedContactApi.update(editing.id, form); setEditing(null); } else { await trustedContactApi.create(form); }
+      setForm({ name: "", phone: "", relationshipLabel: "" }); await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : t.error); }
+  };
+  const confirm = async (contact: TrustedContact) => {
+    if (!window.confirm(t.contactConfirmText)) return;
+    try { await trustedContactApi.update(contact.id, { action: "confirm" }); await load(); } catch { setError(t.error); }
+  };
+  const sendTest = async (contact: TrustedContact) => {
+    setMessage("");
+    try { await trustedContactApi.update(contact.id, { action: "test" }); setMessage(t.testSent); await load(); } catch { setError(t.error); }
+  };
+  const remove = async (contact: TrustedContact) => {
+    if (!window.confirm(`${t.removeContact}: ${contact.name}?`)) return;
+    try { await trustedContactApi.remove(contact.id); if (editing?.id === contact.id) setEditing(null); setMessage(t.contactRemoved); await load(); } catch { setError(t.error); }
+  };
+  const atLimit = contacts.length >= 5;
+  return <>
+    <h1>{t.contacts}</h1><p className="helper">{t.contactsNote}</p>
+    {error && <div className="error-box"><p>{error}</p></div>}{message && <p className="success">{message}</p>}
+    <form className="worker-form" onSubmit={submit}>
+      <label>{t.contactName}<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
+      <label>{t.contactPhone}<input required type="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 98765 43210" /></label>
+      <label>{t.contactRelation}<input value={form.relationshipLabel} onChange={(e) => setForm({ ...form, relationshipLabel: e.target.value })} placeholder={t.contactRelationHint} /></label>
+      <button className="button" disabled={loading || (!editing && atLimit)}>{editing ? t.save : t.addContact}</button>
+      {editing && <button type="button" className="button button-ghost" onClick={() => { setEditing(null); setForm({ name: "", phone: "", relationshipLabel: "" }); }}>{t.stopListening}</button>}
+      {!editing && atLimit && <p className="helper">{t.contactLimit}</p>}
+    </form>
+    <div className="list-panel">
+      {loading ? <p>{t.loading}</p> : contacts.length ? contacts.map((contact) => (
+        <div className="list-row" key={contact.id}>
+          <strong>{contact.name}{contact.relationshipLabel ? <small> · {contact.relationshipLabel}</small> : null}</strong>
+          <span>{contact.phone} · {contact.status === "confirmed" ? `✓ ${t.confirmedContact}` : t.pendingContact}</span>
+          <div className="contact-actions">
+            {contact.status === "pending" && <button className="button button-small" onClick={() => void confirm(contact)}>{t.confirmContact}</button>}
+            <button className="button button-small" onClick={() => void sendTest(contact)}>{t.testContact}</button>
+            <button className="button button-small" onClick={() => startEdit(contact)}>{t.editContact}</button>
+            <button className="button button-small" onClick={() => void remove(contact)}>{t.removeContact}</button>
+          </div>
+        </div>
+      )) : <p>{t.contactsEmpty}</p>}
+      <p className="helper">{t.contactsEmergencyNote}</p>
+    </div>
+  </>;
+}
+
 function Profile({ lang, dashboard, refresh }: { lang: Language; dashboard: Dashboard; refresh: () => Promise<void> }) {
   const t = labels[lang]; const initial = dashboard.worker.profile || {};
   const [form, setForm] = React.useState({ state: String(initial.state || initial.originState || ""), age: initial.age === undefined || initial.age === null ? "" : String(initial.age), workerCategory: String(initial.workerCategory || "") });
@@ -71,7 +128,7 @@ function Profile({ lang, dashboard, refresh }: { lang: Language; dashboard: Dash
   const categories: Array<[string, string]> = lang === "hi"
     ? [["unskilled_construction", "अकुशल निर्माण कार्य"], ["semi_skilled_construction", "अर्ध-कुशल निर्माण कार्य"], ["skilled_construction", "कुशल निर्माण कार्य"], ["domestic_work", "घरेलू काम"], ["street_vendor", "थेला/रेहड़ी विक्रेता"], ["factory", "कारखाना कार्य"], ["formal_employment", "औपचारिक रोजगार"], ["agriculture", "कृषि कार्य"]]
     : [["unskilled_construction", "Unskilled construction"], ["semi_skilled_construction", "Semi-skilled construction"], ["skilled_construction", "Skilled construction"], ["domestic_work", "Domestic work"], ["street_vendor", "Street vendor"], ["factory", "Factory work"], ["formal_employment", "Formal employment"], ["agriculture", "Agriculture"]];
-  return <><h1>{t.profile}</h1><p className="helper">{t.profileNote}</p><form className="worker-form" onSubmit={submit}><label>{t.state}<input value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })} placeholder="Delhi" /></label><label>{t.age}<input type="number" min={14} max={100} value={form.age} onChange={(event) => setForm({ ...form, age: event.target.value })} /></label><label>{t.workCategory}<select value={form.workerCategory} onChange={(event) => setForm({ ...form, workerCategory: event.target.value })}><option value="">—</option>{categories.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><button className="button" disabled={busy}>{busy ? t.loading : t.save}</button>{message && <p className="success">{message}</p>}</form><p className="helper">{t.schemesProfileHint}</p></>;
+  return <><h1>{t.profile}</h1><p className="helper">{t.profileNote}</p><form className="worker-form" onSubmit={submit}><label>{t.state}<input value={form.state} onChange={(event) => setForm({ ...form, state: event.target.value })} placeholder="Delhi" /></label><label>{t.age}<input type="number" min={14} max={100} value={form.age} onChange={(event) => setForm({ ...form, age: event.target.value })} /></label><label>{t.workCategory}<select value={form.workerCategory} onChange={(event) => setForm({ ...form, workerCategory: event.target.value })}><option value="">—</option>{categories.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><button className="button" disabled={busy}>{busy ? t.loading : t.save}</button>{message && <p className="success">{message}</p>}</form><section className="list-panel"><h2>{t.downloadData}</h2><p className="helper">{t.downloadDataNote}</p><div className="contact-actions"><button className="button" onClick={() => void downloadWorkerData("pdf").then(() => setMessage(t.downloadStarted)).catch(() => setMessage(t.downloadFailed))}>{t.downloadPdf}</button><button className="button" onClick={() => void downloadWorkerData("csv").then(() => setMessage(t.downloadStarted)).catch(() => setMessage(t.downloadFailed))}>{t.downloadCsv}</button><button className="button" onClick={() => void downloadWorkerData("json").then(() => setMessage(t.downloadStarted)).catch(() => setMessage(t.downloadFailed))}>{t.downloadJson}</button></div></section><p className="helper">{t.schemesProfileHint}</p></>;
 }
 
 function SchemeAdmin() {
@@ -149,7 +206,7 @@ function Auth({ lang, setSession }: { lang: Language; setSession: (session: Sess
 
 function WorkerLayout({ lang, dashboard, logout, children }: { lang: Language; dashboard: Dashboard; logout: () => void; children: React.ReactNode }) {
   const t = labels[lang]; const navigate = useNavigate();
-  return <main className="worker-app"><aside className="worker-nav"><Link className="brand" to="/worker">{lang === "hi" ? "पहचान" : "Pehchaan"}<span>.</span></Link><button onClick={() => navigate("/worker")}>{t.dashboard}</button><button onClick={() => navigate("/worker/wages")}>{t.wages}</button><button onClick={() => navigate("/worker/check-in")}>{t.checkin}</button><button onClick={() => navigate("/worker/report")}>{t.complaint}</button><button onClick={() => navigate("/worker/cases")}>{t.cases}</button><button onClick={() => navigate("/worker/schemes")}>{t.schemes}</button><button onClick={() => navigate("/worker/profile")}>{t.profile}</button><button className="logout-link" onClick={logout}>{t.logout}</button></aside><section className="worker-content"><OfflineQueueStatus lang={lang} />{children}</section></main>;
+  return <main className="worker-app"><aside className="worker-nav"><Link className="brand" to="/worker">{lang === "hi" ? "पहचान" : "Pehchaan"}<span>.</span></Link><button onClick={() => navigate("/worker")}>{t.dashboard}</button><button onClick={() => navigate("/worker/wages")}>{t.wages}</button><button onClick={() => navigate("/worker/check-in")}>{t.checkin}</button><button onClick={() => navigate("/worker/report")}>{t.complaint}</button><button onClick={() => navigate("/worker/cases")}>{t.cases}</button><button onClick={() => navigate("/worker/schemes")}>{t.schemes}</button><button onClick={() => navigate("/worker/contacts")}>{t.contacts}</button><button onClick={() => navigate("/worker/profile")}>{t.profile}</button><button className="logout-link" onClick={logout}>{t.logout}</button></aside><section className="worker-content"><OfflineQueueStatus lang={lang} />{children}</section></main>;
 }
 
 function Loading({ lang }: { lang: Language }) { return <div className="loading-card" aria-live="polite">{labels[lang].loading}</div>; }
@@ -256,9 +313,10 @@ function WorkerArea({ lang, session, logout }: { lang: Language; session: Sessio
     };
     void migrateLegacyQueue();
   }, []);
-  if (loading && !dashboard) return <WorkerLayout lang={lang} dashboard={{ worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] }} logout={logout}><Loading lang={lang} /></WorkerLayout>;
-  if (!dashboard) return <WorkerLayout lang={lang} dashboard={{ worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] }} logout={logout}><ErrorBox lang={lang} offline={offline} onRetry={() => void refresh()} /></WorkerLayout>;
-  return <WorkerLayout lang={lang} dashboard={dashboard} logout={logout}>{offline && <ErrorBox lang={lang} offline onRetry={() => void refresh()} />}<Routes><Route index element={<DashboardHome lang={lang} dashboard={dashboard} />} /><Route path="wages" element={<Wages lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="check-in" element={<CheckIn lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="report" element={<Report lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="cases" element={<Cases lang={lang} dashboard={dashboard} />} /><Route path="schemes" element={<Schemes lang={lang} dashboard={dashboard} />} /><Route path="profile" element={<Profile lang={lang} dashboard={dashboard} refresh={refresh} />} /></Routes></WorkerLayout>;
+  const stubDashboard: Dashboard = { worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] };
+  if (loading && !dashboard) return <WorkerLayout lang={lang} dashboard={stubDashboard} logout={logout}><Loading lang={lang} /></WorkerLayout>;
+  if (!dashboard) return <WorkerLayout lang={lang} dashboard={stubDashboard} logout={logout}><ErrorBox lang={lang} offline={offline} onRetry={() => void refresh()} /></WorkerLayout>;
+  return <WorkerLayout lang={lang} dashboard={dashboard} logout={logout}>{offline && <ErrorBox lang={lang} offline onRetry={() => void refresh()} />}<Routes><Route index element={<DashboardHome lang={lang} dashboard={dashboard} />} /><Route path="wages" element={<Wages lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="check-in" element={<CheckIn lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="report" element={<Report lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="cases" element={<Cases lang={lang} dashboard={dashboard} />} /><Route path="schemes" element={<Schemes lang={lang} dashboard={dashboard} />} /><Route path="contacts" element={<Contacts lang={lang} dashboard={dashboard} />} /><Route path="profile" element={<Profile lang={lang} dashboard={dashboard} refresh={refresh} />} /></Routes></WorkerLayout>;
 }
 
 function PublicPage({ lang, title }: { lang: Language; title: string }) { return <main className="page-hero"><p className="eyebrow">{title}</p><h1>{lang === "hi" ? "सुरक्षित सहायता तक एक साफ रास्ता।" : "A clear path to safer support."}</h1><p>{lang === "hi" ? "यह जानकारी पेज जल्द ही और विस्तार से उपलब्ध होगा।" : "This information page will be expanded soon."}</p></main>; }

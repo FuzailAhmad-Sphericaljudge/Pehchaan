@@ -148,6 +148,42 @@ export const workRelationshipApi = {
   create: (body: Record<string, unknown>) => request<{ relationship: WorkRelationship }>("/api/work-relationships", json(body)),
   update: (id: string, body: Record<string, unknown>) => request<{ relationship: WorkRelationship }>(`/api/work-relationships/${encodeURIComponent(id)}`, { ...json(body), method: "PATCH" }),
 };
+export type TrustedContact = { id: string; name: string; phone: string; relationshipLabel: string | null; status: "pending" | "confirmed"; confirmedAt: string | null; lastTestSentAt: string | null; createdAt: string };
+export const trustedContactApi = {
+  list: () => request<{ contacts: TrustedContact[] }>("/api/worker/trusted-contacts"),
+  create: (body: Record<string, unknown>) => request<{ contact: TrustedContact }>("/api/worker/trusted-contacts", json(body)),
+  update: (id: string, body: Record<string, unknown>) => request<{ contact: TrustedContact; sent?: boolean }>(`/api/worker/trusted-contacts/${encodeURIComponent(id)}`, { ...json(body), method: "PATCH" }),
+  remove: (id: string) => request<void>(`/api/worker/trusted-contacts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+};
+
+export async function downloadWorkerData(format: "json" | "csv" | "pdf"): Promise<void> {
+  const session = (() => {
+    try {
+      const worker = JSON.parse(localStorage.getItem("pehchaan-worker-session") || "null");
+      return worker as { token?: string; refreshToken?: string } | null;
+    } catch { return null; }
+  })();
+  const response = await fetch(`/api/worker/export?format=${encodeURIComponent(format)}`, { headers: session?.token ? { Authorization: `Bearer ${session.token}` } : {} });
+  if (response.status === 401 && session?.refreshToken) {
+    const refresh = await fetch("/api/auth/refresh", { method: "POST", headers: { Authorization: `Bearer ${session.refreshToken}`, "Content-Type": "application/json" }, body: "{}" });
+    if (!refresh.ok) throw new Error("Session expired. Please log in again.");
+    const refreshed = await refresh.json();
+    localStorage.setItem("pehchaan-worker-session", JSON.stringify({ ...session, token: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: Date.now() + refreshed.expiresIn * 1000 }));
+    return downloadWorkerData(format);
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(String(payload.error || "Export failed."));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = response.headers.get("Content-Disposition")?.match(/filename="(.+)"/)?.[1] || `pehchaan-my-data.${format}`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export type MinimumWageRate = { id: string; state: string; workerCategory: string; dailyAmount: number; currency: string; effectiveFrom: string; sourceNote: string; updatedAt: string };
 export const minimumWageApi = {
   list: () => request<{ rates: MinimumWageRate[] }>("/api/minimum-wages"),
