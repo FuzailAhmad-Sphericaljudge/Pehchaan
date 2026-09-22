@@ -672,10 +672,6 @@ function getWorkerDashboard(workerId) {
     };
   }
 
-  function serializeWageRate(rate) {
-    return { id: rate.id, state: rate.state, workerCategory: rate.workerCategory, dailyAmount: Number(rate.dailyAmount), currency: rate.currency, effectiveFrom: rate.effectiveFrom, sourceNote: rate.sourceNote, updatedAt: rate.updatedAt };
-  }
-
   function matchingSchemes(workerProfile = {}) {
     const age = Number(workerProfile.age);
     const state = String(workerProfile.state || workerProfile.originState || '').trim().toLowerCase();
@@ -1121,6 +1117,18 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       jsonResponse(res, 401, { error: 'Invalid organization credentials.' });
+      return;
+    }
+    // Phase 31: organization logins respect the platform approval lifecycle.
+    // A missing application record keeps the seeded demo accounts working.
+    const ngoApplication = findApplicationByEmail(body.email);
+    if (ngoApplication && ngoApplication.status !== 'approved') {
+      const reason = ngoApplication.status === 'pending'
+        ? 'Your organization account is awaiting platform approval.'
+        : ngoApplication.status === 'deactivated'
+          ? 'This organization account has been deactivated by the platform team.'
+          : 'This organization application was not approved. Contact the platform team.';
+      jsonResponse(res, 403, { error: reason });
       return;
     }
     const role = adminLogin ? 'ngo_admin' : 'ngo_caseworker';
