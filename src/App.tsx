@@ -423,6 +423,266 @@ function EmployerLogin({ setSession }: { setSession: (value: NgoSession) => void
 function EmployerInterest() { const [sent, setSent] = React.useState(false); const submit = async (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); await employerApi.interest({ name: form.get("name"), email: form.get("email"), organization: form.get("organization"), message: form.get("message") }); setSent(true); }; return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">Employer partnership</p><h1>Build trust with fair work records</h1>{sent ? <p className="success">Thank you. Our team will contact you after review.</p> : <><label>Name<input name="name" required /></label><label>Work email<input name="email" type="email" required /></label><label>Organization<input name="organization" required /></label><label>Message<textarea name="message" /></label><button className="button">Request onboarding</button></>}</form></main>; }
 function EmployerArea({ logout }: { logout: () => void }) { const [data, setData] = React.useState<{ records: import("./api").EmployerRecord[]; compliance: { flagged: number; responded: number; responseRate: number; badge: string } } | null>(null); const [error, setError] = React.useState(""); const [response, setResponse] = React.useState<Record<string, string>>({}); const [siteName, setSiteName] = React.useState(""); const [qr, setQr] = React.useState<{ name: string; code: string; dataUrl: string } | null>(null); React.useEffect(() => { employerApi.dashboard().then(setData).catch(() => setError("Could not load employer records.")); }, []); if (error) return <main className="worker-content"><p className="error">{error}</p></main>; if (!data) return <Loading lang="en" />; const createQr = async (event: React.FormEvent) => { event.preventDefault(); const result = await employerApi.createWorksite(siteName); setQr({ name: result.worksite.name, code: result.worksite.registrationCode, dataUrl: result.qrDataUrl }); setSiteName(""); }; return <main className="worker-app"><aside className="worker-nav"><Link className="brand" to="/">Pehchaan<span>.</span></Link><strong>Employer portal</strong><button className="logout-link" onClick={logout}>Log out</button></aside><section className="worker-content employer-portal"><p className="eyebrow teal">Responsible employer tools</p><h1>Fair work transparency</h1><div className="stats-grid"><div className="stat-card"><span>Compliance signal</span><strong>{data.compliance.badge}</strong></div><div className="stat-card"><span>Response rate</span><strong>{data.compliance.responseRate}%</strong></div><div className="stat-card"><span>Worker privacy</span><strong>Protected</strong></div></div><div className="list-panel"><h2>Register a worksite QR</h2><form onSubmit={createQr} className="inline-form"><input required value={siteName} onChange={(event) => setSiteName(event.target.value)} placeholder="Worksite name" /><button className="button button-small">Generate QR</button></form>{qr && <div className="qr-card"><img src={qr.dataUrl} alt={`QR code for ${qr.name}`} /><strong>{qr.name}</strong><small>Code: {qr.code}</small></div>}</div><div className="list-panel"><h2>Wage records</h2>{data.records.length ? data.records.map((record) => <div className="list-row" key={record.id}><strong>{record.period}</strong><span>Promised ₹{record.promisedAmount} · Paid ₹{record.paidAmount} · {record.status}</span>{record.status === "disputed" && <><input value={response[record.id] || ""} onChange={(e) => setResponse({ ...response, [record.id]: e.target.value })} placeholder="Your response" /><button className="button button-small" onClick={() => void employerApi.respond(record.id, response[record.id] || "").then(() => setData({ ...data, records: data.records.map((item) => item.id === record.id ? { ...item, status: "responded" } : item) }))}>Respond</button></>}</div>) : <p>No consented wage records yet.</p>}</div><p className="helper">Private complaints, evidence, NGO notes, and other employers' data are never shown here.</p></section></main>; }
 
+const platformSessionKey = "pehchaan-platform-session";
+type PlatformSession = { email: string; token: string; refreshToken: string; expiresAt: number };
+function getPlatformSession(): PlatformSession | null { try { const value = JSON.parse(localStorage.getItem(platformSessionKey) || "null") as PlatformSession | null; return value && value.expiresAt > Date.now() ? value : null; } catch { return null; } }
+
+function PlatformLogin({ setSession }: { setSession: (session: PlatformSession) => void }) {
+  const [email, setEmail] = React.useState(""); const [password, setPassword] = React.useState(""); const [error, setError] = React.useState("");
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault(); setError("");
+    try {
+      const result = await authApi.platformLogin(email, password);
+      if (result.user.role !== "platform_admin") throw new Error("This account is not a platform admin.");
+      const session = { email, token: result.accessToken, refreshToken: result.refreshToken, expiresAt: Date.now() + result.expiresIn * 1000 };
+      localStorage.setItem(platformSessionKey, JSON.stringify(session)); setSession(session);
+    } catch (cause) { setError(cause instanceof Error && cause.message !== "Request failed." ? cause.message : "Invalid platform credentials."); }
+  };
+  return <main className="auth-page"><form className="auth-card" onSubmit={submit}><p className="eyebrow teal">Pehchaan platform team</p><h1>Platform admin</h1><p className="helper">Internal operations panel — separate from NGO, employer, and partner accounts. Requests are rate-limited and audited.</p><label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label><label>Password<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} /></label><button className="button">Sign in</button>{error && <p className="error">{error}</p>}</form></main>;
+}
+
+function PlatformNav({ logout }: { logout: () => void }) {
+  const navigate = useNavigate();
+  return <aside className="worker-nav ngo-nav"><Link className="brand" to="/platform">Pehchaan<span>.</span></Link><strong>Platform admin</strong><button onClick={() => navigate("/platform")}>Overview</button><button onClick={() => navigate("/platform/approvals")}>Approval queue</button><button onClick={() => navigate("/platform/reference")}>Reference data</button><button onClick={() => navigate("/platform/accounts")}>Accounts &amp; recovery</button><button onClick={() => navigate("/platform/audit")}>Audit log</button><button className="logout-link" onClick={logout}>Log out</button></aside>;
+}
+
+function PlatformArea({ logout }: { logout: () => void }) {
+  return <main className="worker-app"><PlatformNav logout={logout} /><section className="worker-content"><Routes><Route index element={<PlatformOverview />} /><Route path="approvals" element={<PlatformApprovals />} /><Route path="reference" element={<PlatformReference />} /><Route path="accounts" element={<PlatformAccounts />} /><Route path="audit" element={<PlatformAudit />} /></Routes></section></main>;
+}
+
+function PlatformOverview() {
+  const [data, setData] = React.useState<{ overview: import("./api").PlatformOverview; summary: import("./api").PlatformSummary } | null>(null); const [error, setError] = React.useState("");
+  React.useEffect(() => { platformApi.overview().then(setData).catch(() => setError("Could not load the platform overview.")); }, []);
+  if (error) return <div className="error-box"><p>{error}</p></div>;
+  if (!data) return <Loading lang="en" />;
+  const { overview, summary } = data;
+  return <>
+    <div className="ngo-heading"><div><p className="eyebrow teal">Pehchaan platform team</p><h1>Platform overview</h1></div></div>
+    <p className="helper">Aggregate operational view across all organizations — totals and response signals only. Individual case content, worker identities, and contact details are never shown in this panel; the funder-facing impact report is a separate tool.</p>
+    <div className="stats-grid">
+      <div className="stat-card"><span>Active organizations</span><strong>{overview.organizations.active}</strong></div>
+      <div className="stat-card"><span>Pending approvals</span><strong>{summary.queue.pending}</strong></div>
+      <div className="stat-card"><span>Cases across platform</span><strong>{overview.cases.total}</strong></div>
+      <div className="stat-card"><span>Median resolution time</span><strong>{overview.medianResponseHours === null ? "—" : `${overview.medianResponseHours}h`}</strong></div>
+      <div className="stat-card"><span>Workers registered</span><strong>{overview.workers.total}</strong></div>
+      <div className="stat-card"><span>Open recovery requests</span><strong>{summary.recoveryRequests}</strong></div>
+    </div>
+    <div className="detail-grid">
+      <section className="list-panel"><h2>Organizations</h2>
+        <div className="list-row"><strong>Active NGOs</strong><span>{summary.organizations.ngos}</span></div>
+        <div className="list-row"><strong>Active employers</strong><span>{summary.organizations.employers}</span></div>
+        <div className="list-row"><strong>Deactivated</strong><span>{overview.organizations.deactivated}</span></div>
+        <div className="list-row"><strong>Queue: NGOs / employers</strong><span>{summary.queue.pendingNgos} / {summary.queue.pendingEmployers}</span></div>
+      </section>
+      <section className="list-panel"><h2>Case load (all NGOs)</h2>
+        <div className="list-row"><strong>Open</strong><span>{overview.cases.open}</span></div>
+        {Object.entries(overview.cases.openByStatus).map(([key, value]) => <div className="list-row" key={key}><strong>· {key}</strong><span>{value}</span></div>)}
+        <div className="list-row"><strong>Resolved</strong><span>{overview.cases.resolved}</span></div>
+        <div className="list-row"><strong>New in last 30 days</strong><span>{overview.cases.createdLast30Days}</span></div>
+      </section>
+      <section className="list-panel"><h2>Safety alerts</h2>
+        <div className="list-row"><strong>Pending</strong><span>{overview.alerts.pending}</span></div>
+        <div className="list-row"><strong>Escalated</strong><span>{overview.alerts.escalated}</span></div>
+        <div className="list-row"><strong>Acknowledged</strong><span>{overview.alerts.acknowledged}</span></div>
+      </section>
+      <section className="list-panel"><h2>Reference data</h2>
+        <div className="list-row"><strong>Minimum wage rates</strong><span>{summary.referenceData.minimumWageRates}</span></div>
+        <div className="list-row"><strong>Welfare schemes</strong><span>{summary.referenceData.welfareSchemes}</span></div>
+        <p className="helper">Updated by the platform team from the Reference data tab; every change is recorded in the audit log.</p>
+      </section>
+    </div>
+    <p className="helper">Generated {new Date(overview.generatedAt).toLocaleString()}</p>
+  </>;
+}
+
+function PlatformApprovals() {
+  const [filter, setFilter] = React.useState<"pending" | "approved" | "rejected" | "deactivated">("pending");
+  const [applications, setApplications] = React.useState<import("./api").PlatformApplication[]>([]);
+  const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState(""); const [message, setMessage] = React.useState("");
+  const load = React.useCallback(async () => { setLoading(true); try { setApplications((await platformApi.applications(filter)).applications); setError(""); } catch { setError("Could not load the approval queue."); } finally { setLoading(false); } }, [filter]);
+  React.useEffect(() => { void load(); }, [load]);
+  const decide = async (item: import("./api").PlatformApplication, body: Record<string, unknown>, note: string) => { setMessage(""); setError(""); try { await platformApi.decide(item.id, body); setMessage(note); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Action failed."); } };
+  const reject = (item: import("./api").PlatformApplication) => { const reason = window.prompt(`Reason for rejecting ${item.organizationName} (shared with the applicant):`); if (reason) void decide(item, { decision: "reject", reason }, "Application rejected."); };
+  return <>
+    <h1>Approval queue</h1>
+    <p className="helper">New NGO and employer sign-ups wait here before they can access any worker data. Approving an employer provisions a verified worksite QR seed; approved organizations still receive their credentials out of band.</p>
+    <div className="filter-row">{[["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["deactivated", "Deactivated"]].map(([value, label]) => <button className={filter === value ? "filter active" : "filter"} onClick={() => setFilter(value as typeof filter)} key={value}>{label}</button>)}</div>
+    {message && <p className="success">{message}</p>}
+    {error && <div className="error-box"><p>{error}</p></div>}
+    <div className="list-panel">
+      {loading ? <p>Loading...</p> : applications.length ? applications.map((item) => (
+        <div className="list-row" key={item.id}>
+          <div>
+            <strong>{item.organizationName} <small>· {item.kind === "ngo" ? "NGO" : "Employer"}</small></strong>
+            <span>{item.contactName} · {item.contactEmail}{item.contactPhone ? ` · ${item.contactPhone}` : ""}</span>
+            {item.notes && <p>{item.notes}</p>}
+            {item.status === "rejected" && item.rejectionReason && <p className="error">Reason: {item.rejectionReason}</p>}
+            <small>Applied {new Date(item.createdAt).toLocaleString()}{item.reviewedBy ? ` · reviewed by ${item.reviewedBy}` : ""}</small>
+          </div>
+          <div className="contact-actions">
+            {item.status === "pending" && <>
+              <button className="button button-small" onClick={() => void decide(item, { decision: "approve" }, "Application approved.")}>Approve</button>
+              <button className="button button-small" onClick={() => reject(item)}>Reject</button>
+            </>}
+            {item.status === "approved" && <button className="button button-small" onClick={() => void decide(item, { decision: "deactivate" }, "Account deactivated.")}>Deactivate</button>}
+            {item.status === "deactivated" && <button className="button button-small" onClick={() => void decide(item, { decision: "reactivate" }, "Account reactivated.")}>Reactivate</button>}
+          </div>
+        </div>
+      )) : <p className="empty-state">Nothing in this queue right now.</p>}
+    </div>
+  </>;
+}
+
+function PlatformReference() {
+  const [tab, setTab] = React.useState<"wages" | "schemes">("wages");
+  const [rates, setRates] = React.useState<import("./api").MinimumWageRate[]>([]); const [schemes, setSchemes] = React.useState<import("./api").WelfareScheme[]>([]);
+  const [changes, setChanges] = React.useState<import("./api").CaseDetail["auditLog"]>([]);
+  const [wageForm, setWageForm] = React.useState({ state: "", workerCategory: "unskilled_construction", dailyAmount: "", effectiveFrom: new Date().toISOString().slice(0, 10), sourceNote: "" });
+  const [schemeForm, setSchemeForm] = React.useState({ slug: "", name: "", description: "", eligibility: "", registrationInstructions: "", officialUrl: "", minAge: "", maxAge: "", states: "All India", workerCategories: "" });
+  const [message, setMessage] = React.useState(""); const [error, setError] = React.useState("");
+  const load = React.useCallback(async () => {
+    try {
+      const [wageResult, schemeResult, auditResult] = await Promise.all([platformApi.minimumWages(), platformApi.schemes(), platformApi.audit(500).catch(() => ({ entries: [] as import("./api").CaseDetail["auditLog"] }))]);
+      setRates(wageResult.rates); setSchemes(schemeResult.schemes);
+      setChanges(auditResult.entries.filter((entry) => ["minimum_wage_rate_updated", "welfare_scheme_updated"].includes(entry.action)).slice(0, 12));
+      setError("");
+    } catch { setError("Could not load reference data."); }
+  }, []);
+  React.useEffect(() => { void load(); }, [load]);
+  const saveWage = async (event: React.FormEvent) => {
+    event.preventDefault(); setMessage(""); setError("");
+    try { await platformApi.upsertWageRate({ ...wageForm, dailyAmount: Number(wageForm.dailyAmount) }); setMessage("Reference rate saved and audited."); setWageForm({ ...wageForm, state: "", dailyAmount: "", sourceNote: "" }); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save the rate."); }
+  };
+  const saveScheme = async (event: React.FormEvent) => {
+    event.preventDefault(); setMessage(""); setError("");
+    try { await platformApi.upsertScheme({ ...schemeForm, minAge: schemeForm.minAge || null, maxAge: schemeForm.maxAge || null, states: schemeForm.states.split(",").map((item) => item.trim()).filter(Boolean), workerCategories: schemeForm.workerCategories.split(",").map((item) => item.trim()).filter(Boolean) }); setMessage("Scheme saved and audited."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save the scheme."); }
+  };
+  return <>
+    <h1>Global reference data</h1>
+    <p className="helper">Single source of truth for the minimum-wage table (Phase 26) and the welfare scheme catalog (Phase 27). NGO admin tools can no longer edit these; every change here is attributed in the audit log.</p>
+    <div className="filter-row"><button className={tab === "wages" ? "filter active" : "filter"} onClick={() => setTab("wages")}>Minimum wages</button><button className={tab === "schemes" ? "filter active" : "filter"} onClick={() => setTab("schemes")}>Welfare schemes</button></div>
+    {message && <p className="success">{message}</p>}
+    {error && <div className="error-box"><p>{error}</p></div>}
+    {tab === "wages" ? <>
+      <form className="worker-form" onSubmit={saveWage}>
+        <label>State<input required value={wageForm.state} onChange={(event) => setWageForm({ ...wageForm, state: event.target.value })} placeholder="e.g. Delhi" /></label>
+        <label>Worker category<select value={wageForm.workerCategory} onChange={(event) => setWageForm({ ...wageForm, workerCategory: event.target.value })}><option value="unskilled_construction">Unskilled construction</option><option value="semi_skilled_construction">Semi-skilled construction</option><option value="skilled_construction">Skilled construction</option><option value="domestic_work">Domestic work</option></select></label>
+        <label>Daily amount (INR)<input required type="number" min="1" value={wageForm.dailyAmount} onChange={(event) => setWageForm({ ...wageForm, dailyAmount: event.target.value })} /></label>
+        <label>Effective from<input required type="date" value={wageForm.effectiveFrom} onChange={(event) => setWageForm({ ...wageForm, effectiveFrom: event.target.value })} /></label>
+        <label>Source note<textarea value={wageForm.sourceNote} onChange={(event) => setWageForm({ ...wageForm, sourceNote: event.target.value })} placeholder="Official notification reference" /></label>
+        <button className="button">Save rate</button>
+      </form>
+      <div className="list-panel">{rates.map((rate) => <div className="list-row" key={rate.id}><strong>{rate.state} · {rate.workerCategory}</strong><span>₹{rate.dailyAmount}/day · effective {rate.effectiveFrom} · updated {new Date(rate.updatedAt).toLocaleDateString()}</span></div>)}{!rates.length && <p>No reference rates yet.</p>}</div>
+    </> : <>
+      <form className="worker-form" onSubmit={saveScheme}>
+        {(["slug", "name", "description", "eligibility", "registrationInstructions", "officialUrl", "minAge", "maxAge", "states", "workerCategories"] as const).map((field) => <label key={field}>{field}<input required={["slug", "name", "description", "eligibility", "registrationInstructions"].includes(field)} value={schemeForm[field]} onChange={(event) => setSchemeForm({ ...schemeForm, [field]: event.target.value })} /></label>)}
+        <button className="button">Save scheme</button>
+      </form>
+      <div className="list-panel">{schemes.map((scheme) => <div className="list-row" key={scheme.id}><strong>{scheme.name} <small>· {scheme.slug}</small></strong><span>{scheme.active === false ? "Inactive" : "Active"} · {(scheme.states || ["—"]).join(", ")} · updated {scheme.updatedAt ? new Date(scheme.updatedAt).toLocaleDateString() : "—"}</span></div>)}{!schemes.length && <p>No schemes yet.</p>}</div>
+    </>}
+    <div className="list-panel"><h2>Recent reference changes</h2>
+      {changes.length ? changes.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span>{entry.details && <p>{[entry.details.state, entry.details.workerCategory, entry.details.dailyAmount ? `₹${entry.details.dailyAmount}` : "", entry.details.slug].filter(Boolean).join(" · ")}</p>}</div>) : <p>No reference changes recorded yet.</p>}
+    </div>
+  </>;
+}
+
+function PlatformAccounts() {
+  const [accounts, setAccounts] = React.useState<import("./api").PlatformApplication[]>([]);
+  const [requests, setRequests] = React.useState<import("./api").PlatformRecoveryRequest[]>([]);
+  const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState(""); const [message, setMessage] = React.useState("");
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try { const [accountResult, recoveryResult] = await Promise.all([platformApi.accounts(), platformApi.recovery()]); setAccounts(accountResult.accounts); setRequests(recoveryResult.requests); setError(""); } catch { setError("Could not load accounts."); } finally { setLoading(false); }
+  }, []);
+  React.useEffect(() => { void load(); }, [load]);
+  const deactivate = (account: import("./api").PlatformApplication) => { if (window.confirm(`Deactivate ${account.organizationName}? Active sessions are signed out immediately.`)) void platformApi.decide(account.id, { decision: "deactivate" }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : "Action failed.")); };
+  const reactivate = (account: import("./api").PlatformApplication) => { void platformApi.decide(account.id, { decision: "reactivate" }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : "Action failed.")); };
+  const resolve = (request: import("./api").PlatformRecoveryRequest, outcome: "grant" | "dismiss") => {
+    const note = window.prompt(`Resolution note for ${request.contactEmail} (${outcome === "grant" ? "grant recovery" : "dismiss request"}):`);
+    if (note === null) return;
+    void platformApi.resolveRecovery(request.id, { outcome, note }).then(load).catch((cause) => setError(cause instanceof Error ? cause.message : "Action failed."));
+  };
+  return <>
+    <h1>Accounts &amp; recovery</h1>
+    <p className="helper">Create or deactivate NGO Admin and Employer accounts, and handle account recovery requests that should never be self-service for security reasons.</p>
+    {message && <p className="success">{message}</p>}
+    {error && <div className="error-box"><p>{error}</p></div>}
+    <div className="list-panel"><h2>Recovery requests</h2>
+      {loading ? <p>Loading...</p> : requests.length ? requests.map((request) => (
+        <div className="list-row" key={request.id}>
+          <div>
+            <strong>{request.contactEmail}{request.organizationName ? <small> · {request.organizationName}</small> : null}</strong>
+            <span>{request.status} · requested {new Date(request.createdAt).toLocaleString()}</span>
+            <p>{request.reason}</p>
+            {request.resolutionNote && <p className="helper">Note: {request.resolutionNote}</p>}
+          </div>
+          {request.status === "pending" && <div className="contact-actions"><button className="button button-small" onClick={() => resolve(request, "grant")}>Grant</button><button className="button button-small" onClick={() => resolve(request, "dismiss")}>Dismiss</button></div>}
+        </div>
+      )) : <p>No recovery requests.</p>}
+    </div>
+    <div className="list-panel"><h2>Organization accounts</h2>
+      {loading ? <p>Loading...</p> : accounts.map((account) => (
+        <div className="list-row" key={account.id}>
+          <div><strong>{account.organizationName} <small>· {account.kind === "ngo" ? "NGO Admin" : "Employer"}</small></strong><span>{account.contactEmail} · {account.status}</span></div>
+          <div className="contact-actions">
+            {account.status === "approved" && <button className="button button-small" onClick={() => deactivate(account)}>Deactivate</button>}
+            {account.status === "deactivated" && <button className="button button-small" onClick={() => reactivate(account)}>Reactivate</button>}
+          </div>
+        </div>
+      ))}
+      <p className="helper">New credentials for approved organizations are issued by the platform team out of band — this panel never displays or resets passwords.</p>
+    </div>
+  </>;
+}
+
+function PlatformAudit() {
+  const [entries, setEntries] = React.useState<import("./api").CaseDetail["auditLog"]>([]); const [loading, setLoading] = React.useState(true); const [error, setError] = React.useState(false);
+  React.useEffect(() => { platformApi.audit().then((result) => setEntries(result.entries)).catch(() => setError(true)).finally(() => setLoading(false)); }, []);
+  if (loading) return <Loading lang="en" />;
+  if (error) return <div className="error-box"><p>Could not load the audit log.</p><button className="button button-small" onClick={() => window.location.reload()}>Try again</button></div>;
+  return <><h1>Platform audit log</h1><div className="list-panel">{entries.length ? entries.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span></div>) : <p>No entries yet.</p>}</div></>;
+}
+
+function PartnerSignup() {
+  const [kind, setKind] = React.useState<"ngo" | "employer">("ngo");
+  const [busy, setBusy] = React.useState(false); const [sent, setSent] = React.useState(false); const [error, setError] = React.useState("");
+  const [recoveryEmail, setRecoveryEmail] = React.useState(""); const [recoveryReason, setRecoveryReason] = React.useState(""); const [recoveryMessage, setRecoveryMessage] = React.useState(""); const [recoveryError, setRecoveryError] = React.useState("");
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setBusy(true); setError("");
+    const data = new FormData(event.currentTarget);
+    try { const result = await platformApi.signup({ kind, organizationName: data.get("organizationName"), contactName: data.get("contactName"), contactEmail: data.get("contactEmail"), contactPhone: data.get("contactPhone"), notes: data.get("notes") }); setSent(true); void result; } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not submit the application."); } finally { setBusy(false); }
+  };
+  const submitRecovery = async (event: React.FormEvent) => {
+    event.preventDefault(); setBusy(true); setRecoveryError(""); setRecoveryMessage("");
+    try { const result = await platformApi.requestRecovery({ contactEmail: recoveryEmail, reason: recoveryReason }); setRecoveryMessage(result.message); setRecoveryEmail(""); setRecoveryReason(""); } catch (cause) { setRecoveryError(cause instanceof Error ? cause.message : "Could not submit the request."); } finally { setBusy(false); }
+  };
+  return <main className="auth-page">
+    <form className="auth-card" onSubmit={submit}>
+      <p className="eyebrow teal">Partner onboarding</p><h1>Join Pehchaan</h1>
+      <p className="helper">Applications are reviewed by the Pehchaan platform team before any account is activated. Review takes a few working days.</p>
+      {sent ? <p className="success">Application received. The platform team will contact you after verifying your details — no account is created until then.</p> : <>
+        <label>Organization type<select value={kind} onChange={(event) => setKind(event.target.value as "ngo" | "employer")}><option value="ngo">NGO / casework organization</option><option value="employer">Verified employer</option></select></label>
+        <label>Organization name<input name="organizationName" required /></label>
+        <label>Contact name<input name="contactName" required /></label>
+        <label>Work email<input name="contactEmail" type="email" required /></label>
+        <label>Phone (optional)<input name="contactPhone" type="tel" /></label>
+        <label>What will you use Pehchaan for?<textarea name="notes" /></label>
+        <button className="button" disabled={busy}>{busy ? "Sending..." : "Submit application"}</button>
+      </>}
+      {error && <p className="error">{error}</p>}
+    </form>
+    <form className="auth-card" onSubmit={submitRecovery}>
+      <p className="eyebrow teal">Account recovery</p><h1>Lost access?</h1>
+      <p className="helper">Password and account recovery are handled manually by the platform team for security — there is no self-service reset for organization accounts.</p>
+      <label>Account email<input type="email" required value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} /></label>
+      <label>What happened?<textarea required value={recoveryReason} onChange={(event) => setRecoveryReason(event.target.value)} /></label>
+      <button className="button" disabled={busy}>Request recovery</button>
+      {recoveryMessage && <p className="success">{recoveryMessage}</p>}
+      {recoveryError && <p className="error">{recoveryError}</p>}
+    </form>
+  </main>;
+}
+
 function WorksiteLink({ session }: { session: Session | null }) { const [message, setMessage] = React.useState("Linking verified worksite..."); React.useEffect(() => { const code = window.location.pathname.split("/").pop() || ""; if (!session) { setMessage("Please log in as a worker first, then scan the worksite QR again."); return; } void workerApi.linkWorksite(code).then((result) => setMessage(`Worksite linked: ${result.worksite.name}`)).catch((error) => setMessage(error instanceof Error ? error.message : "Worksite could not be linked.")); }, [session]); return <main className="auth-page"><div className="auth-card"><p className="eyebrow teal">Pehchaan worksite</p><h1>{message}</h1><Link className="button" to={session ? "/worker" : "/worker/login"}>{session ? "Open worker dashboard" : "Worker login"}</Link></div></main>; }
 
 function App() {
