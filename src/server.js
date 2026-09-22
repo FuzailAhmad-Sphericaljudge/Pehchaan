@@ -637,6 +637,10 @@ function serveStaticFile(res, filePath) {
   });
 }
 
+function serializeWageRate(rate) {
+  return { id: rate.id, state: rate.state, workerCategory: rate.workerCategory, dailyAmount: Number(rate.dailyAmount), currency: rate.currency, effectiveFrom: rate.effectiveFrom, sourceNote: rate.sourceNote, updatedAt: rate.updatedAt };
+}
+
 function getWorkerDashboard(workerId) {
   const worker = Array.from(workers.values()).find((item) => item.id === workerId);
   if (!worker) {
