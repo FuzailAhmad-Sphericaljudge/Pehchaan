@@ -1730,32 +1730,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && pathname === '/api/ngo/schemes') {
+    // Phase 31: global reference data is maintained by the platform team only.
     const actor = authenticate(req, res, ['ngo_admin']);
     if (!actor) return;
-    const body = await parseBody(req);
-    const slug = String(body.slug || '').trim().toLowerCase();
-    const name = String(body.name || '').trim();
-    const description = String(body.description || '').trim();
-    const eligibility = String(body.eligibility || '').trim();
-    const registrationInstructions = String(body.registrationInstructions || '').trim();
-    if (!slug || !name || !description || !eligibility || !registrationInstructions) {
-      jsonResponse(res, 400, { error: 'Slug, name, description, eligibility, and registration instructions are required.' });
-      return;
-    }
-    const existing = welfareSchemes.get(slug);
-    const scheme = {
-      id: existing?.id || randomUUID(), slug, name, description, eligibility, registrationInstructions,
-      officialUrl: body.officialUrl ? String(body.officialUrl) : null,
-      languages: body.languages && typeof body.languages === 'object' ? body.languages : {},
-      states: Array.isArray(body.states) ? body.states.map(String) : ['All India'],
-      workerCategories: Array.isArray(body.workerCategories) ? body.workerCategories.map(String) : [],
-      minAge: body.minAge === null || body.minAge === undefined || body.minAge === '' ? null : Number(body.minAge),
-      maxAge: body.maxAge === null || body.maxAge === undefined || body.maxAge === '' ? null : Number(body.maxAge),
-      active: body.active !== false, updatedAt: new Date().toISOString(),
-    };
-    welfareSchemes.set(slug, scheme);
-    makeAudit('welfare_scheme_updated', actor.sub, scheme.id, { slug, active: scheme.active });
-    jsonResponse(res, 200, { scheme });
+    jsonResponse(res, 403, { error: 'Welfare scheme reference data is now managed by the Pehchaan platform team. Please contact your platform admin to update schemes.' });
     return;
   }
 
