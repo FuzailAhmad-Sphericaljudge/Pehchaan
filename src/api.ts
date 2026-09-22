@@ -79,7 +79,9 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
       try {
         const worker = JSON.parse(localStorage.getItem("pehchaan-worker-session") || "null");
         const ngo = JSON.parse(localStorage.getItem("pehchaan-ngo-session") || "null");
-        return worker || ngo || null;
+        const platform = JSON.parse(localStorage.getItem("pehchaan-platform-session") || "null");
+        const employer = JSON.parse(localStorage.getItem("pehchaan-employer-session") || "null");
+        return worker || ngo || platform || employer || null;
       } catch { return ""; }
     })();
     const token = session?.token || "";
