@@ -97,7 +97,7 @@ async function request<T>(path: string, init?: RequestInit, retry = true): Promi
       });
       if (refreshResponse.ok) {
         const refreshed = await refreshResponse.json();
-        const key = localStorage.getItem("pehchaan-worker-session") ? "pehchaan-worker-session" : "pehchaan-ngo-session";
+        const key = localStorage.getItem("pehchaan-worker-session") ? "pehchaan-worker-session" : localStorage.getItem("pehchaan-platform-session") ? "pehchaan-platform-session" : "pehchaan-ngo-session";
         localStorage.setItem(key, JSON.stringify({ ...session, token: refreshed.accessToken, refreshToken: refreshed.refreshToken, expiresAt: Date.now() + refreshed.expiresIn * 1000 }));
         return request<T>(path, init, false);
       }
