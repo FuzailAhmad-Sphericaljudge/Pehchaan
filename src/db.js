@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -36,8 +36,10 @@ export async function loadState() {
     query('SELECT * FROM welfare_schemes'),
     query('SELECT * FROM work_relationships'),
     query("SELECT * FROM trusted_contacts WHERE status != 'removed'"),
+    query('SELECT * FROM platform_applications ORDER BY created_at ASC'),
+    query('SELECT * FROM account_recovery_requests ORDER BY created_at DESC'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows };
 }
 
 export async function saveState(state) {
@@ -137,6 +139,18 @@ export async function saveState(state) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
         ON CONFLICT (id) DO UPDATE SET name=$3,description=$4,eligibility=$5,registration_instructions=$6,official_url=$7,languages=$8,states=$9,worker_categories=$10,min_age=$11,max_age=$12,active=$13,updated_at=$14`,
         [item.id, item.slug, item.name, item.description, item.eligibility, item.registrationInstructions, item.officialUrl, item.languages || {}, item.states, item.workerCategories, item.minAge, item.maxAge, item.active, item.updatedAt]);
+    }
+    for (const item of state.platformApplications || []) {
+      await client.query(`INSERT INTO platform_applications (id, kind, organization_name, contact_name, contact_email, contact_phone, notes, status, rejection_reason, reviewed_by, reviewed_at, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (id) DO UPDATE SET contact_name=$4,contact_phone=$6,notes=$7,status=$8,rejection_reason=$9,reviewed_by=$10,reviewed_at=$11`,
+        [item.id, item.kind, item.organizationName, item.contactName, item.contactEmail, item.contactPhone, item.notes || '', item.status, item.rejectionReason, item.reviewedBy, item.reviewedAt, item.createdAt]);
+    }
+    for (const item of state.accountRecovery || []) {
+      await client.query(`INSERT INTO account_recovery_requests (id, application_id, contact_email, reason, status, resolution_note, requested_by, resolved_by, resolved_at, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        ON CONFLICT (id) DO UPDATE SET status=$5,resolution_note=$6,resolved_by=$8,resolved_at=$9`,
+        [item.id, item.applicationId, item.contactEmail, item.reason, item.status, item.resolutionNote, item.requestedBy, item.resolvedBy, item.resolvedAt, item.createdAt]);
     }
     await client.query('COMMIT');
   } catch (error) {
