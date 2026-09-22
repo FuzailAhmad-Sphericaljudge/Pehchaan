@@ -100,13 +100,41 @@ the legal-advice disclaimer. Generation is review-first: worker-created
 previews cannot be downloaded until an NGO caseworker or admin has reviewed
 the document, and no document is sent automatically.
 
+## Platform super-admin (Phase 31)
+
+A separate **Platform Admin** role (`/platform`) is reserved for the Pehchaan
+team itself; no NGO, employer, worker, or partner credential can reach it. Log
+in with `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` (demo:
+`platform@pehchaan.org` / `demo`). The panel provides:
+
+- **Approval queue** — new NGO and employer applications (public form at
+  `/partner-signup`) land as `pending` and cannot log in until a platform admin
+  approves them; employer logins for pending/rejected/deactivated accounts are
+  rejected server-side. Approving an employer provisions a verified worksite
+  QR seed; rejection requires a reason; deactivation immediately signs out and
+  blocks the account.
+- **Global reference data** — the minimum-wage table (Phase 26) and welfare
+  scheme catalog (Phase 27) are managed here in one place. NGO Admin tools are
+  read-only now, and every change is attributed in the audit log (who, when,
+  old values in details).
+- **Platform oversight** — a read-only aggregate view across all NGOs (case
+  totals, open/resolved, median resolution time, alert status, channel mix).
+  This is operational visibility for the platform team, separate from the
+  funder-facing impact analytics of Phase 17, and never exposes case content.
+- **Accounts & recovery** — deactivate/reactivate organization accounts and
+  handle account recovery requests submitted at `/partner-signup`; recovery is
+  never self-service.
+
+Seed approvals live in `migrations/019_platform_admin.sql`.
+
 ## Minimum wage and fair-pay checker
 
 Worker wage entries are compared with an admin-maintained reference table by
 state and worker category. The worker sees a supportive informational message
 when an entry may be below the reference and is offered a choice to file a
-complaint; no complaint is created automatically. NGO Admins can update rates
-from `/ngo/minimum-wages`, including an effective date and source note. Seed
+complaint; no complaint is created automatically. Since Phase 31 the reference
+table is managed centrally by the platform team (see above); NGO Admins see a
+read-only view from `/ngo/minimum-wages`. Seed
 rates are illustrative references and must be checked against the latest state
 notifications before production use.
 
@@ -120,9 +148,9 @@ does not submit applications on a worker's behalf.
 
 The reference catalog (e-Shram, PM-SYM, Ayushman Bharat, ESIC, PM SVANidhi,
 BOCW construction workers welfare board, PM Awas Yojana, One Nation One Ration
-Card, old-age pension, and state domestic workers welfare boards) is
-admin-editable by NGO Admins from `/ngo/schemes`, like the Phase 26 wage
-table. Each scheme entry carries a plain-language description, basic
+Card, old-age pension, and state domestic workers welfare boards) is maintained
+centrally by the platform team since Phase 31; NGO Admins see a read-only list
+from `/ngo/schemes`. Each scheme entry carries a plain-language description, basic
 eligibility, registration instructions, and an official portal link where one
 exists. Scheme names, descriptions, eligibility, and instructions are
 translated in Hindi, Bengali, Tamil, and Telugu through the same translation
