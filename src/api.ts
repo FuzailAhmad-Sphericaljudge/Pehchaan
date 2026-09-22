@@ -129,6 +129,7 @@ export const authApi = {
   verifyOtp: (phone: string, otp: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: Worker }>("/api/auth/verify-otp", json({ phone, otp })),
   ngoLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/ngo-login", json({ email, password })),
   employerLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/employer-login", json({ email, password })),
+  platformLogin: (email: string, password: string) => request<{ accessToken: string; refreshToken: string; expiresIn: number; user: { id: string; role: string } }>("/api/auth/platform-login", json({ email, password })),
   logout: (refreshToken?: string) => request<void>("/api/auth/logout", json({ refreshToken })),
 };
 
