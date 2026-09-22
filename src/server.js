@@ -415,6 +415,124 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
+function serializeApplication(item) {
+  return {
+    id: item.id,
+    kind: item.kind,
+    organizationName: item.organizationName,
+    contactName: item.contactName,
+    contactEmail: item.contactEmail,
+    contactPhone: item.contactPhone || null,
+    notes: item.notes || '',
+    status: item.status,
+    rejectionReason: item.rejectionReason || null,
+    reviewedBy: item.reviewedBy || null,
+    reviewedAt: item.reviewedAt || null,
+    createdAt: item.createdAt,
+  };
+}
+
+function serializeRecovery(item) {
+  return {
+    id: item.id,
+    applicationId: item.applicationId || null,
+    organizationName: item.applicationId && platformApplications.get(item.applicationId)?.organizationName || null,
+    contactEmail: item.contactEmail,
+    reason: item.reason,
+    status: item.status,
+    resolutionNote: item.resolutionNote || null,
+    requestedBy: item.requestedBy,
+    resolvedBy: item.resolvedBy || null,
+    resolvedAt: item.resolvedAt || null,
+    createdAt: item.createdAt,
+  };
+}
+
+function findApplicationByEmail(email) {
+  const key = String(email || '').trim().toLowerCase();
+  return Array.from(platformApplications.values()).find((item) => item.contactEmail.toLowerCase() === key) || null;
+}
+
+function pendingApprovalFor(email, kind) {
+  const item = findApplicationByEmail(email);
+  return item && item.kind === kind && item.status === 'pending' ? item : null;
+}
+
+function platformSummary() {
+  const values = Array.from(platformApplications.values());
+  const active = values.filter((item) => item.status === 'approved');
+  const ngoCaseCounts = new Map();
+  for (const targetCase of cases) ngoCaseCounts.set(targetCase.owner, (ngoCaseCounts.get(targetCase.owner) || 0) + 1);
+  return {
+    generatedAt: new Date().toISOString(),
+    organizations: {
+      total: values.length,
+      ngos: active.filter((item) => item.kind === 'ngo').length,
+      employers: active.filter((item) => item.kind === 'employer').length,
+      active: active.length,
+      deactivated: values.filter((item) => item.status === 'deactivated').length,
+    },
+    queue: {
+      pending: values.filter((item) => item.status === 'pending').length,
+      pendingNgos: values.filter((item) => item.status === 'pending' && item.kind === 'ngo').length,
+      pendingEmployers: values.filter((item) => item.status === 'pending' && item.kind === 'employer').length,
+    },
+    cases: {
+      total: cases.length,
+      open: cases.filter((item) => item.status !== 'resolved').length,
+      resolved: cases.filter((item) => item.status === 'resolved').length,
+    },
+    workers: { total: workers.size },
+    recoveryRequests: Array.from(accountRecovery.values()).filter((item) => item.status === 'pending').length,
+    referenceData: { minimumWageRates: minimumWages.size, welfareSchemes: welfareSchemes.size },
+  };
+}
+
+function platformOverview() {
+  const responseHours = [];
+  for (const targetCase of cases) {
+    if (targetCase.status === 'resolved') {
+      const hours = (new Date(targetCase.updatedAt) - new Date(targetCase.createdAt)) / 3600000;
+      if (Number.isFinite(hours) && hours >= 0) responseHours.push(hours);
+    }
+  }
+  const openByStatus = {};
+  for (const targetCase of cases) {
+    if (targetCase.status !== 'resolved') openByStatus[targetCase.status] = (openByStatus[targetCase.status] || 0) + 1;
+  }
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 3600 * 1000;
+  return {
+    generatedAt: new Date().toISOString(),
+    aggregateOnly: true,
+    organizations: { active: Array.from(platformApplications.values()).filter((item) => item.status === 'approved').length, deactivated: Array.from(platformApplications.values()).filter((item) => item.status === 'deactivated').length },
+    cases: { total: cases.length, open: cases.filter((item) => item.status !== 'resolved').length, openByStatus, resolved: cases.filter((item) => item.status === 'resolved').length, createdLast30Days: cases.filter((item) => new Date(item.createdAt).getTime() >= thirtyDaysAgo).length },
+    workers: { total: workers.size, registeredLast30Days: Array.from(workers.values()).filter((item) => new Date(item.createdAt).getTime() >= thirtyDaysAgo).length },
+    alerts: { pending: alerts.filter((item) => item.status === 'pending').length, escalated: alerts.filter((item) => item.status === 'escalated').length, acknowledged: alerts.filter((item) => item.status === 'acknowledged').length },
+    medianResponseHours: responseHours.length ? Math.round(responseHours.sort((a, b) => a - b)[Math.floor(responseHours.length / 2)] * 10) / 10 : null,
+    channels: { whatsapp: cases.filter((item) => item.source === 'whatsapp').length, sms: cases.filter((item) => item.source === 'sms').length, ussd: cases.filter((item) => item.source === 'ussd').length, app: cases.filter((item) => !item.source || item.source === 'app').length },
+  };
+}
+
+// Creating an organization record (id, verified worksite QR seeds) is kept
+// together so approval always provisions the same things regardless of caller.
+function approveApplication(actor, item) {
+  item.status = 'approved';
+  item.rejectionReason = null;
+  item.reviewedBy = actor.sub;
+  item.reviewedAt = new Date().toISOString();
+  if (item.kind === 'employer') {
+    const worksite = { id: randomUUID(), employerId: item.contactEmail, name: `${item.organizationName} (main site)`, registrationCode: `site-${randomUUID()}`, verified: true, createdAt: new Date().toISOString() };
+    worksites.set(worksite.registrationCode, worksite);
+    makeAudit('worksite_qr_created', 'system:approval', worksite.id, { name: worksite.name, onBehalfOf: item.contactEmail });
+  }
+  for (const [jti, session] of sessions) {
+    if (session.subject === item.contactEmail) sessions.delete(jti);
+  }
+  makeAudit(`${item.kind}_application_approved`, actor.sub, item.id, { organization: item.organizationName, contactEmail: item.contactEmail });
+  persist();
+  return item;
+}
+
 function bearer(req) {
   const value = req.headers.authorization || '';
   return value.startsWith('Bearer ') ? value.slice(7) : '';
