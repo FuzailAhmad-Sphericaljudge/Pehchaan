@@ -1206,6 +1206,16 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 401, { error: 'Invalid employer credentials.' });
       return;
     }
+    const employerApplication = findApplicationByEmail(body.email);
+    if (employerApplication && employerApplication.status !== 'approved') {
+      const reason = employerApplication.status === 'pending'
+        ? 'Your employer account is awaiting platform approval.'
+        : employerApplication.status === 'deactivated'
+          ? 'This employer account has been deactivated by the platform team.'
+          : 'This employer application was not approved. Contact the platform team.';
+      jsonResponse(res, 403, { error: reason });
+      return;
+    }
     const access = issueSession(body.email, 'employer');
     const refresh = issueSession(body.email, 'employer', 'refresh');
     jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'employer' } });
