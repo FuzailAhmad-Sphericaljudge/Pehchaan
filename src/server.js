@@ -1366,6 +1366,152 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && pathname === '/api/platform/schemes') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { schemes: Array.from(welfareSchemes.values()) });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/schemes') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const slug = String(body.slug || '').trim().toLowerCase();
+    const name = String(body.name || '').trim();
+    const description = String(body.description || '').trim();
+    const eligibility = String(body.eligibility || '').trim();
+    const registrationInstructions = String(body.registrationInstructions || '').trim();
+    if (!slug || !name || !description || !eligibility || !registrationInstructions) {
+      jsonResponse(res, 400, { error: 'Slug, name, description, eligibility, and registration instructions are required.' });
+      return;
+    }
+    const existing = welfareSchemes.get(slug);
+    const scheme = {
+      id: existing?.id || randomUUID(), slug, name, description, eligibility, registrationInstructions,
+      officialUrl: body.officialUrl ? String(body.officialUrl) : null,
+      languages: body.languages && typeof body.languages === 'object' ? body.languages : {},
+      states: Array.isArray(body.states) ? body.states.map(String) : ['All India'],
+      workerCategories: Array.isArray(body.workerCategories) ? body.workerCategories.map(String) : [],
+      minAge: body.minAge === null || body.minAge === undefined || body.minAge === '' ? null : Number(body.minAge),
+      maxAge: body.maxAge === null || body.maxAge === undefined || body.maxAge === '' ? null : Number(body.maxAge),
+      active: body.active !== false, updatedAt: new Date().toISOString(),
+    };
+    welfareSchemes.set(slug, scheme);
+    makeAudit('welfare_scheme_updated', actor.sub, scheme.id, { slug, active: scheme.active, scope: 'platform' });
+    persist();
+    jsonResponse(res, 200, { scheme });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/accounts') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const applications = Array.from(platformApplications.values()).filter((item) => item.status === 'approved' || item.status === 'deactivated');
+    jsonResponse(res, 200, { accounts: applications.map(serializeApplication), total: applications.length });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/recovery') {
+    // Unauthenticated: this is how a locked-out NGO/employer asks for help.
+    const body = await parseBody(req);
+    const contactEmail = String(body.contactEmail || '').trim().toLowerCase();
+    const reason = String(body.reason || '').trim();
+    if (!contactEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail) || !reason) {
+      jsonResponse(res, 400, { error: 'A valid account email and a reason are required.' });
+      return;
+    }
+    if (!checkRateLimit(`recovery:${req.socket.remoteAddress}`, 3, 15 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many recovery requests. Please try again later.' });
+      return;
+    }
+    const application = findApplicationByEmail(contactEmail);
+    if (application) {
+      const alreadyPending = Array.from(accountRecovery.values()).find((item) => item.status === 'pending' && (item.contactEmail === contactEmail || item.applicationId === application.id));
+      if (alreadyPending) { jsonResponse(res, 409, { error: 'A recovery request for this account is already awaiting review.' }); return; }
+    }
+    const request = {
+      id: randomUUID(),
+      applicationId: application?.id || null,
+      contactEmail,
+      reason,
+      status: 'pending',
+      resolutionNote: null,
+      requestedBy: contactEmail,
+      resolvedBy: null,
+      resolvedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    accountRecovery.set(request.id, request);
+    makeAudit('account_recovery_requested', contactEmail, request.id, { applicationId: request.applicationId, matched: Boolean(application) });
+    persist();
+    jsonResponse(res, 201, { submitted: true, message: 'The Pehchaan platform team reviews every recovery request by hand before any account change.' });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/recovery') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const items = Array.from(accountRecovery.values()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    jsonResponse(res, 200, { requests: items.map(serializeRecovery), total: items.length });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/recovery/resolve') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const request = accountRecovery.get(String(body.id || ''));
+    if (!request) { jsonResponse(res, 404, { error: 'Recovery request not found.' }); return; }
+    if (request.status !== 'pending') { jsonResponse(res, 409, { error: 'This recovery request was already resolved.' }); return; }
+    const outcome = String(body.outcome || '');
+    if (outcome !== 'grant' && outcome !== 'dismiss') {
+      jsonResponse(res, 400, { error: 'Outcome must be grant or dismiss.' });
+      return;
+    }
+    request.status = outcome === 'grant' ? 'resolved' : 'dismissed';
+    request.resolutionNote = String(body.note || '').trim() || null;
+    request.resolvedBy = actor.sub;
+    request.resolvedAt = new Date().toISOString();
+    const application = request.applicationId && platformApplications.get(request.applicationId);
+    if (outcome === 'grant') {
+      // Identity is verified by the platform team out of band; the grant
+      // recovers a deactivated account or escalates the request for review.
+      if (application && application.status === 'deactivated') {
+        approveApplication(actor, application);
+      }
+      makeAudit('account_recovery_granted', actor.sub, request.id, { applicationId: request.applicationId, contactEmail: request.contactEmail, note: request.resolutionNote });
+    } else {
+      makeAudit('account_recovery_dismissed', actor.sub, request.id, { applicationId: request.applicationId, contactEmail: request.contactEmail, note: request.resolutionNote });
+    }
+    persist();
+    jsonResponse(res, 200, { request: serializeRecovery(request) });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/audit-log') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 500);
+    jsonResponse(res, 200, { entries: auditLog.slice(0, limit), total: auditLog.length });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/minimum-wages') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { rates: Array.from(minimumWages.values()).map(serializeWageRate) });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/ngo/minimum-wages') {
+    // Phase 31: global reference data is maintained by the platform team only.
+    const actor = authenticate(req, res, ['ngo_admin']);
+    if (!actor) return;
+    jsonResponse(res, 403, { error: 'Minimum wage reference data is now managed by the Pehchaan platform team. Please contact your platform admin to update rates.' });
+    return;
+  }
+
   if (req.method === 'GET' && pathname === '/api/worker/schemes') {
     const actor = authenticate(req, res, ['worker']);
     if (!actor) return;
