@@ -199,6 +199,27 @@ export const schemeApi = {
   upsert: (body: Record<string, unknown>) => request<{ scheme: WelfareScheme }>("/api/ngo/schemes", json(body)),
 };
 
+export type PlatformApplication = { id: string; kind: "ngo" | "employer"; organizationName: string; contactName: string; contactEmail: string; contactPhone: string | null; notes: string; status: "pending" | "approved" | "rejected" | "deactivated"; rejectionReason: string | null; reviewedBy: string | null; reviewedAt: string | null; createdAt: string };
+export type PlatformRecoveryRequest = { id: string; applicationId: string | null; organizationName: string | null; contactEmail: string; reason: string; status: "pending" | "resolved" | "dismissed"; resolutionNote: string | null; requestedBy: string; resolvedBy: string | null; resolvedAt: string | null; createdAt: string };
+export type PlatformOverview = { generatedAt: string; aggregateOnly: boolean; organizations: { active: number; deactivated: number }; cases: { total: number; open: number; openByStatus: Record<string, number>; resolved: number; createdLast30Days: number }; workers: { total: number; registeredLast30Days: number }; alerts: { pending: number; escalated: number; acknowledged: number }; medianResponseHours: number | null; channels: Record<string, number> };
+export type PlatformSummary = { generatedAt: string; organizations: { total: number; ngos: number; employers: number; active: number; deactivated: number }; queue: { pending: number; pendingNgos: number; pendingEmployers: number }; cases: { total: number; open: number; resolved: number }; workers: { total: number }; recoveryRequests: number; referenceData: { minimumWageRates: number; welfareSchemes: number } };
+
+export const platformApi = {
+  overview: () => request<{ overview: PlatformOverview; summary: PlatformSummary }>("/api/platform/overview"),
+  applications: (status?: "pending" | "approved" | "rejected" | "deactivated") => request<{ applications: PlatformApplication[]; total: number }>(`/api/platform/applications${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  decide: (id: string, body: Record<string, unknown>) => request<{ application: PlatformApplication }>("/api/platform/applications/decision", json({ id, ...body })),
+  minimumWages: () => request<{ rates: MinimumWageRate[] }>("/api/platform/minimum-wages"),
+  upsertWageRate: (body: Record<string, unknown>) => request<{ rate: MinimumWageRate }>("/api/platform/minimum-wages", json(body)),
+  schemes: () => request<{ schemes: WelfareScheme[] }>("/api/platform/schemes"),
+  upsertScheme: (body: Record<string, unknown>) => request<{ scheme: WelfareScheme }>("/api/platform/schemes", json(body)),
+  accounts: () => request<{ accounts: PlatformApplication[]; total: number }>("/api/platform/accounts"),
+  recovery: () => request<{ requests: PlatformRecoveryRequest[]; total: number }>("/api/platform/recovery"),
+  resolveRecovery: (id: string, body: Record<string, unknown>) => request<{ request: PlatformRecoveryRequest }>("/api/platform/recovery/resolve", json({ id, ...body })),
+  audit: (limit = 200) => request<{ entries: CaseDetail["auditLog"]; total: number }>(`/api/platform/audit-log?limit=${limit}`),
+  signup: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/signup", json(body)),
+  requestRecovery: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/recovery", json(body)),
+};
+
 export const ngoApi = {
   cases: () => request<{ cases: NgoCase[]; total: number }>("/api/ngo/cases"),
   detail: (caseId: string) => request<CaseDetail>(`/api/ngo/cases/${encodeURIComponent(caseId)}`),
