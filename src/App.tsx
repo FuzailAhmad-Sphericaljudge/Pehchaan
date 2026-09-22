@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
+import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
 import { addOfflineItem, listOfflineItems, OfflineItem, removeOfflineItem, updateOfflineItem } from "./offline";
 
 const baseLabels = {
