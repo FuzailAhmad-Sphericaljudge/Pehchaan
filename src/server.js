@@ -1138,6 +1138,64 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && pathname === '/api/auth/platform-login') {
+    const body = await parseBody(req);
+    if (body.email !== (process.env.PLATFORM_ADMIN_EMAIL || 'platform@pehchaan.org') || body.password !== (process.env.PLATFORM_ADMIN_PASSWORD || 'demo')) {
+      if (!checkRateLimit(`platform-login-failed:${req.socket.remoteAddress}`, 10, 15 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many login attempts. Please wait and try again.' });
+        return;
+      }
+      jsonResponse(res, 401, { error: 'Invalid platform credentials.' });
+      return;
+    }
+    const access = issueSession(body.email, 'platform_admin');
+    const refresh = issueSession(body.email, 'platform_admin', 'refresh');
+    jsonResponse(res, 200, { accessToken: access.token, refreshToken: refresh.token, expiresIn: 900, user: { id: body.email, role: 'platform_admin' } });
+    return;
+  }
+
+  // Organization sign-ups (Phases 7 and 16) now land in the platform approval
+  // queue instead of going live immediately. Credentials do not exist until a
+  // platform admin approves the application.
+  if (req.method === 'POST' && pathname === '/api/platform/signup') {
+    const body = await parseBody(req);
+    const kind = body.kind === 'employer' ? 'employer' : 'ngo';
+    const organizationName = String(body.organizationName || '').trim();
+    const contactName = String(body.contactName || '').trim();
+    const contactEmail = String(body.contactEmail || '').trim().toLowerCase();
+    if (!organizationName || !contactName || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contactEmail)) {
+      jsonResponse(res, 400, { error: 'Organization name, contact name, and a valid contact email are required.' });
+      return;
+    }
+    if (findApplicationByEmail(contactEmail)) {
+      jsonResponse(res, 409, { error: 'An application or account with this email already exists.' });
+      return;
+    }
+    if (!checkRateLimit(`platform-signup:${req.socket.remoteAddress}`, 5, 15 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many applications from this network. Please try again later.' });
+      return;
+    }
+    const application = {
+      id: randomUUID(),
+      kind,
+      organizationName,
+      contactName,
+      contactEmail,
+      contactPhone: String(body.contactPhone || '').trim() || null,
+      notes: String(body.notes || '').trim(),
+      status: 'pending',
+      rejectionReason: null,
+      reviewedBy: null,
+      reviewedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    platformApplications.set(application.id, application);
+    makeAudit(`${kind}_application_submitted`, contactEmail, application.id, { organization: organizationName });
+    persist();
+    jsonResponse(res, 201, { submitted: true, application: serializeApplication(application), message: 'The Pehchaan team reviews every application before the account is activated.' });
+    return;
+  }
+
   if (req.method === 'POST' && pathname === '/api/auth/employer-login') {
     const body = await parseBody(req);
     if (body.email !== (process.env.EMPLOYER_DEMO_EMAIL || 'employer@pehchaan.org') || body.password !== (process.env.EMPLOYER_DEMO_PASSWORD || 'demo')) {
