@@ -65,7 +65,7 @@ export type Dashboard = {
   incomeByRelationship?: IncomeByRelationship;
   schemes?: WelfareScheme[];
 };
-export type WelfareScheme = { id: string; slug: string; name: string; description: string; eligibility: string; registrationInstructions: string; officialUrl?: string | null; languages?: Record<string, { name?: string; description?: string; eligibility?: string; registrationInstructions?: string }>; };
+export type WelfareScheme = { id: string; slug: string; name: string; description: string; eligibility: string; registrationInstructions: string; officialUrl?: string | null; languages?: Record<string, { name?: string; description?: string; eligibility?: string; registrationInstructions?: string }>; states?: string[]; workerCategories?: string[]; minAge?: number | null; maxAge?: number | null; active?: boolean; updatedAt?: string; };
 
 export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string };
 export type Evidence = { id: string; fileName: string; type: string; mimeType?: string; sizeBytes?: number; checksum?: string | null; scanStatus?: string; available?: boolean; createdAt: string };
