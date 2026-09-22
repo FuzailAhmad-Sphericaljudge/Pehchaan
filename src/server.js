@@ -1360,7 +1360,8 @@ const server = http.createServer(async (req, res) => {
     const key = `${state.toLowerCase()}::${workerCategory}`;
     const rate = { id: minimumWages.get(key)?.id || randomUUID(), state, workerCategory, dailyAmount, currency: 'INR', effectiveFrom, sourceNote: String(body.sourceNote || 'Admin-maintained reference; verify with the latest state notification.'), updatedAt: new Date().toISOString() };
     minimumWages.set(key, rate);
-    makeAudit('minimum_wage_rate_updated', actor.sub, rate.id, { state, workerCategory, dailyAmount, effectiveFrom });
+    makeAudit('minimum_wage_rate_updated', actor.sub, rate.id, { state, workerCategory, dailyAmount, effectiveFrom, scope: 'platform' });
+    persist();
     jsonResponse(res, 200, { rate: serializeWageRate(rate) });
     return;
   }
