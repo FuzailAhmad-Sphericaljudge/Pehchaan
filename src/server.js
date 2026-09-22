@@ -1266,8 +1266,80 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'GET' && pathname === '/api/minimum-wages') {
-    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+  if (req.method === 'GET' && pathname === '/api/platform/overview') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { overview: platformOverview(), summary: platformSummary() });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/applications') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const statusFilter = url.searchParams.get('status');
+    const kindFilter = url.searchParams.get('kind');
+    let items = Array.from(platformApplications.values());
+    if (statusFilter) items = items.filter((item) => item.status === statusFilter);
+    if (kindFilter) items = items.filter((item) => item.kind === kindFilter);
+    items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    jsonResponse(res, 200, { applications: items.map(serializeApplication), total: items.length });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/platform/applications/decision') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const item = platformApplications.get(String(body.id || ''));
+    if (!item) { jsonResponse(res, 404, { error: 'Application not found.' }); return; }
+    const decision = String(body.decision || '');
+    if (decision === 'approve') {
+      if (item.status === 'approved') { jsonResponse(res, 409, { error: 'This application is already approved.' }); return; }
+      approveApplication(actor, item);
+      jsonResponse(res, 200, { application: serializeApplication(item) });
+      return;
+    }
+    if (decision === 'reject') {
+      if (item.status !== 'pending') { jsonResponse(res, 409, { error: 'Only pending applications can be rejected.' }); return; }
+      const reason = String(body.reason || '').trim();
+      if (!reason) { jsonResponse(res, 400, { error: 'A rejection reason is required so the applicant can improve and reapply.' }); return; }
+      item.status = 'rejected';
+      item.rejectionReason = reason;
+      item.reviewedBy = actor.sub;
+      item.reviewedAt = new Date().toISOString();
+      for (const [jti, session] of sessions) {
+        if (session.subject === item.contactEmail) sessions.delete(jti);
+      }
+      makeAudit(`${item.kind}_application_rejected`, actor.sub, item.id, { organization: item.organizationName, reason });
+      persist();
+      jsonResponse(res, 200, { application: serializeApplication(item) });
+      return;
+    }
+    if (decision === 'deactivate') {
+      if (item.status !== 'approved') { jsonResponse(res, 409, { error: 'Only active organizations can be deactivated.' }); return; }
+      item.status = 'deactivated';
+      item.reviewedBy = actor.sub;
+      item.reviewedAt = new Date().toISOString();
+      for (const [jti, session] of sessions) {
+        if (session.subject === item.contactEmail) sessions.delete(jti);
+      }
+      makeAudit(`${item.kind}_account_deactivated`, actor.sub, item.id, { organization: item.organizationName });
+      persist();
+      jsonResponse(res, 200, { application: serializeApplication(item) });
+      return;
+    }
+    if (decision === 'reactivate') {
+      if (item.status !== 'deactivated') { jsonResponse(res, 409, { error: 'Only deactivated organizations can be reactivated.' }); return; }
+      approveApplication(actor, item);
+      jsonResponse(res, 200, { application: serializeApplication(item) });
+      return;
+    }
+    jsonResponse(res, 400, { error: 'Decision must be approve, reject, deactivate, or reactivate.' });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/minimum-wages') {
+    const actor = authenticate(req, res, ['platform_admin']);
     if (!actor) return;
     jsonResponse(res, 200, { rates: Array.from(minimumWages.values()).map(serializeWageRate) });
     return;
