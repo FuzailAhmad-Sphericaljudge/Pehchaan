@@ -138,10 +138,9 @@ function Profile({ lang, dashboard, refresh }: { lang: Language; dashboard: Dash
 }
 
 function SchemeAdmin() {
-  const [form, setForm] = React.useState({ slug: "", name: "", description: "", eligibility: "", registrationInstructions: "", officialUrl: "", minAge: "", maxAge: "", states: "All India", workerCategories: "" });
-  const [message, setMessage] = React.useState("");
-  const submit = async (event: React.FormEvent) => { event.preventDefault(); try { await schemeApi.upsert({ ...form, minAge: form.minAge || null, maxAge: form.maxAge || null, states: form.states.split(",").map((item) => item.trim()).filter(Boolean), workerCategories: form.workerCategories.split(",").map((item) => item.trim()).filter(Boolean) }); setMessage("Scheme saved."); } catch { setMessage("Could not save scheme."); } };
-  return <><h1>Welfare scheme references</h1><p className="helper">Keep descriptions factual and verify every official link before publishing.</p><form className="worker-form" onSubmit={submit}>{(["slug", "name", "description", "eligibility", "registrationInstructions", "officialUrl", "minAge", "maxAge", "states", "workerCategories"] as const).map((field) => <label key={field}>{field}<input required={["slug", "name", "description", "eligibility", "registrationInstructions"].includes(field)} value={form[field]} onChange={(event) => setForm({ ...form, [field]: event.target.value })} /></label>)}<button className="button">Save scheme</button>{message && <p className="success">{message}</p>}</form></>;
+  const [schemes, setSchemes] = React.useState<import("./api").WelfareScheme[]>([]); const [message, setMessage] = React.useState("");
+  React.useEffect(() => { schemeApi.list().then((result) => setSchemes(result.schemes)).catch(() => setMessage("Could not load schemes.")); }, []);
+  return <><h1>Welfare scheme references</h1><div className="list-panel"><p><strong>Scheme reference data is now maintained by the Pehchaan platform team.</strong></p><p className="helper">To add or correct a scheme, contact your platform admin (platform@pehchaan.org) with the plain-language description, eligibility, and an official portal link. The list below shows schemes currently visible to workers.</p></div><div className="list-panel">{schemes.map((scheme) => <div className="list-row" key={scheme.id}><strong>{scheme.name}</strong><span>{scheme.eligibility}</span></div>)}{!schemes.length && <p>{message || "No schemes published yet."}</p>}</div></>;
 }
 
 function isOffline(error: unknown) { return Boolean((error as ApiError)?.offline); }
