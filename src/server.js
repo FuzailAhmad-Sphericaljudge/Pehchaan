@@ -1345,8 +1345,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && pathname === '/api/ngo/minimum-wages') {
-    const actor = authenticate(req, res, ['ngo_admin']);
+  if (req.method === 'POST' && pathname === '/api/platform/minimum-wages') {
+    const actor = authenticate(req, res, ['platform_admin']);
     if (!actor) return;
     const body = await parseBody(req);
     const state = String(body.state || '').trim();
