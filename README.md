@@ -14,10 +14,11 @@ and the Vite frontend with `npm run dev`.
   attempts per IP every 15 minutes. Successful logins never count against
   the limit. Restarting the API clears the in-memory buckets.
 - **"Too many verification requests / new accounts from this network"** —
-  Phase 33 abuse limits (Phase 8 plus per-IP daily caps on OTP requests and
-  new accounts). They reset after 24 hours and exist to stop bulk bot
-  sign-ups; genuine users hitting one by mistake should wait or contact
-  support, never be permanently blocked.
+  Phase 33 abuse limits (Phase 8 plus per-IP daily caps on OTP requests, new
+  accounts, complaints, USSD sessions, and chat wage entries). They reset
+  after 24 hours and exist to stop bulk bot sign-ups; genuine users hitting
+  one by mistake should wait or contact support, never be permanently
+  blocked. Safety check-ins and the USSD help alert are never limited.
 - **Old UI after an update** — the service worker caches the app shell.
   Hard-refresh once (Ctrl+Shift+R); from v2 onward page navigations are
   network-first, so later deploys appear without a manual refresh.
