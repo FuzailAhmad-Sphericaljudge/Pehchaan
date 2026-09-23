@@ -887,7 +887,7 @@ function PlatformAudit() {
   React.useEffect(() => { platformApi.audit().then((result) => setEntries(result.entries)).catch(() => setError(true)).finally(() => setLoading(false)); }, []);
   if (loading) return <Loading lang="en" />;
   if (error) return <div className="error-box"><p>Could not load the audit log.</p><button className="button button-small" onClick={() => window.location.reload()}>Try again</button></div>;
-  return <><h1>Platform audit log</h1><div className="list-panel">{entries.length ? entries.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span></div>) : <p>No entries yet.</p>}</div></>;
+  return <><h1>Platform audit log</h1><div className="list-panel">{entries.length ? entries.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}{String(entry.action).startsWith("content_") ? <small> · {entry.details?.locale as string}</small> : null}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span></div>) : <p>No entries yet.</p>}</div></>;
 }
 
 function PartnerSignup() {
