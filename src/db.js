@@ -174,6 +174,12 @@ export async function saveState(state) {
         ON CONFLICT (endpoint) DO UPDATE SET p256dh=$5,auth=$6`,
         [item.id, item.audienceRole, item.workerId, item.endpoint, item.p256dh, item.auth, item.createdAt]);
     }
+    for (const item of state.fraudReports || []) {
+      await client.query(`INSERT INTO fraud_reports (id, case_id, worker_id, reason, detail, reported_by, reviewed_by, reviewed_at, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (id) DO UPDATE SET reviewed_by=$7,reviewed_at=$8`,
+        [item.id, item.caseId, item.workerId, item.reason, item.detail || '', item.reportedBy, item.reviewedBy, item.reviewedAt, item.createdAt]);
+    }
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
