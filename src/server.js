@@ -2045,8 +2045,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       wageEntries.push(wageEntry);
+      const fairPay = assessWage(Array.from(workers.values()).find((item) => item.id === wageEntry.workerId), wageEntry);
+      if (fairPay.status === 'may_be_below_reference') {
+        createNotification({ workerId: wageEntry.workerId, type: 'wage_flagged', title: 'Wage entry below the reference rate', body: `₹${wageEntry.amount} looks below the ₹${fairPay.dailyReference}/day reference for ${fairPay.state} · ${fairPay.workerCategory}. You can file a complaint or keep the entry.`, meta: { wageEntryId: wageEntry.id, amount: wageEntry.amount, dailyReference: fairPay.dailyReference } });
+      }
       makeAudit('wage_entry_created', wageEntry.workerId, wageEntry.id, wageEntry);
-      jsonResponse(res, 201, { wageEntry, fairPay: assessWage(Array.from(workers.values()).find((item) => item.id === wageEntry.workerId), wageEntry) });
+      jsonResponse(res, 201, { wageEntry, fairPay });
       return;
     } catch (error) {
       jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
@@ -2142,6 +2146,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       cases.push(newCase);
+      notifyNgoCaseworkers({ caseId: newCase.id, type: 'case_assigned', title: 'New case in the inbox', body: `${newCase.id}: ${buildAutoSummary(newCase)}`, meta: { newCase: true, priority: newCase.priority, type: newCase.type } });
       const highRisk = newCase.immediateDanger || newCase.happeningNow || newCase.type === 'debt_bondage';
       const alert = highRisk ? createSafetyAlert({
         caseId: newCase.id, workerId: newCase.workerId, kind: 'high_risk_complaint',
@@ -2187,6 +2192,9 @@ const server = http.createServer(async (req, res) => {
         const body = await parseBody(req);
         if (body.action === 'acknowledge') {
           alert.status = 'acknowledged'; alert.acknowledgedAt = new Date().toISOString(); alert.acknowledgedBy = actor.sub; alert.actionTaken = String(body.actionTaken || '').trim() || null;
+          for (const notification of notifications) {
+            if (notification.type === 'alert_escalated' && notification.meta?.alertId === alert.id && !notification.readAt) notification.readAt = new Date().toISOString();
+          }
           makeAudit('alert_acknowledged', actor.sub, alert.caseId || alert.id, { alertId: alert.id, actionTaken: alert.actionTaken });
         } else if (body.action === 'false_alarm') {
           const reason = String(body.reason || '').trim();
