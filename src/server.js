@@ -780,6 +780,14 @@ function platformSummary() {
     workers: { total: workers.size },
     recoveryRequests: Array.from(accountRecovery.values()).filter((item) => item.status === 'pending').length,
     referenceData: { minimumWageRates: minimumWages.size, welfareSchemes: welfareSchemes.size },
+    // Phase 33: platform-wide abuse signals for the overview dashboard.
+    // Counts only — case content never leaves the responsible NGO.
+    fraud: {
+      totalReports: fraudReports.length,
+      accountsWithReports: fraudAbuseOverview().length,
+      flaggedCases: cases.filter((item) => item.fraudReview?.flagged).length,
+      pendingReview: cases.filter((item) => item.fraudReview?.flagged && !item.fraudReview?.disposition).length,
+    },
   };
 }
 
