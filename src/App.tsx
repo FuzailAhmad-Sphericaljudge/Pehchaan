@@ -609,6 +609,7 @@ function PlatformApprovals() {
             <strong>{item.organizationName} <small>· {item.kind === "ngo" ? "NGO" : "Employer"}</small></strong>
             <span>{item.contactName} · {item.contactEmail}{item.contactPhone ? ` · ${item.contactPhone}` : ""}</span>
             {item.notes && <p>{item.notes}</p>}
+            <small>Verification: {item.registrationNumber ? `Reg. no. ${item.registrationNumber}` : ""}{item.registrationNumber && item.officialDomain ? " · " : ""}{item.officialDomain ? `Domain ${item.officialDomain}` : ""}{!item.registrationNumber && !item.officialDomain ? <b> none provided — approval blocked</b> : ""}</small>
             {item.status === "rejected" && item.rejectionReason && <p className="error">Reason: {item.rejectionReason}</p>}
             <small>Applied {new Date(item.createdAt).toLocaleString()}{item.reviewedBy ? ` · reviewed by ${item.reviewedBy}` : ""}</small>
           </div>
