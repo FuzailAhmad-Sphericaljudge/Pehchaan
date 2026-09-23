@@ -2386,6 +2386,18 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname === '/api/cases') {
     const actor = authenticate(req, res, ['worker']);
     if (!actor) return;
+    // Phase 33: complaint-flooding abuse limits. High enough that a real
+    // worker documenting several genuine problems in a day is never blocked
+    // (well above the daily volume of any honest account we have seen);
+    // low enough that bulk/bot flooding from one account or IP stops.
+    if (!hitRateLimit(`case-create:${actor.sub}`, 10, 24 * 60 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'You have filed several complaints today. Please wait until tomorrow, or contact your NGO caseworker for help with urgent issues.' });
+      return;
+    }
+    if (!hitRateLimit(`case-create-ip:${clientIp(req)}`, 40, 24 * 60 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many complaints from this network today. Please try again tomorrow.' });
+      return;
+    }
     try {
       const body = await parseBody(req);
       if (actor.sub !== String(body.workerId || '')) {
