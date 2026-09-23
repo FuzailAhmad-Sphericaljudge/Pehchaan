@@ -559,6 +559,7 @@ function PlatformOverview() {
       <div className="stat-card"><span>Median resolution time</span><strong>{overview.medianResponseHours === null ? "—" : `${overview.medianResponseHours}h`}</strong></div>
       <div className="stat-card"><span>Workers registered</span><strong>{overview.workers.total}</strong></div>
       <div className="stat-card"><span>Open recovery requests</span><strong>{summary.recoveryRequests}</strong></div>
+      <div className="stat-card"><span>Cases flagged for review</span><strong>{summary.fraud.pendingReview}</strong></div>
     </div>
     <div className="detail-grid">
       <section className="list-panel"><h2>Organizations</h2>
