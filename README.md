@@ -235,8 +235,11 @@ eligibility, registration instructions, and an official portal link where one
 exists. Scheme names, descriptions, eligibility, and instructions are
 translated in Hindi, Bengali, Tamil, and Telugu through the same translation
 layer as the rest of the app, so language does not gatekeep scheme awareness.
-Seed content is illustrative and must be verified against the latest official
-sources before production use.
+Since Phase 34 these translations are editable by the platform team from the
+Super-Admin panel (Welfare schemes tab → per-language editing), saved together
+with the base entry and audited; empty fields fall back to the base English
+text for workers. Seed content is illustrative and must be verified against the
+latest official sources before production use.
 
 ## Secure evidence storage
 
