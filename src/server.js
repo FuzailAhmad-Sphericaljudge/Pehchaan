@@ -3069,6 +3069,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Phase 35: public version history for legal pages. Policy changes must be
+  // provable — anyone can list the versions of a legal document and read the
+  // exact text that was live on a given date. Static pages do not expose
+  // history; bodies come only from the per-version endpoint.
+  if (req.method === 'GET' && pathname.match(/^\/api\/content\/[^/]+\/versions$/)) {
+    const slug = decodeURIComponent(pathname.split('/')[3]);
+    const page = contentPages.get(slug);
+    if (!page || page.kind !== 'legal') { jsonResponse(res, 404, { error: 'Version history is only available for legal pages.' }); return; }
+    const versions = contentAuditTrail(slug).map((item) => ({ id: item.id, locale: item.locale, note: item.note || '', publishedAt: item.createdAt, publishedBy: item.publishedBy }));
+    jsonResponse(res, 200, { slug, versions });
+    return;
+  }
+  if (req.method === 'GET' && pathname.match(/^\/api\/content\/[^/]+\/version\/[^/]+$/)) {
+    const parts = pathname.split('/');
+    const slug = decodeURIComponent(parts[3]);
+    const versionId = parts[5];
+    const page = contentPages.get(slug);
+    if (!page || page.kind !== 'legal') { jsonResponse(res, 404, { error: 'Version history is only available for legal pages.' }); return; }
+    const version = contentVersions.find((item) => item.id === versionId && item.slug === slug);
+    if (!version) { jsonResponse(res, 404, { error: 'Version not found.' }); return; }
+    jsonResponse(res, 200, { slug, version: serializeContentVersion(version) });
+    return;
+  }
+
   // Phase 33: NGO caseworkers report a complaint as fraudulent/spam with a
   // reason. This is separate from the Phase 11 safety "false alarm" handling:
   // false_alarm is for good-faith safety check-ins; fraud reports record
