@@ -1557,6 +1557,13 @@ const server = http.createServer(async (req, res) => {
       active: body.active !== false, updatedAt: new Date().toISOString(),
     };
     welfareSchemes.set(slug, scheme);
+    if (!existing && scheme.active) {
+      for (const worker of workers.values()) {
+        if (matchingSchemes(worker.profile).some((item) => item.id === scheme.id)) {
+          createNotification({ workerId: worker.id, type: 'scheme_matched', title: 'New scheme you may be eligible for', body: `${scheme.name}: ${scheme.eligibility.slice(0, 140)}`, meta: { schemeId: scheme.id, slug: scheme.slug } });
+        }
+      }
+    }
     makeAudit('welfare_scheme_updated', actor.sub, scheme.id, { slug, active: scheme.active, scope: 'platform' });
     persist();
     jsonResponse(res, 200, { scheme });
