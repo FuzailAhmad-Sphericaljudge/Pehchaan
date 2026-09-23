@@ -400,6 +400,8 @@ async function handleSmsMessage(req, res) {
   if (session.state === 'wage_amount' || upper.startsWith('PAY ')) {
     const amount = Number(text.replace(/[^\d.]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) { smsReply(res, 'Reply amount, e.g. PAY 500.'); return; }
+    // Phase 33: wage entries are data too; flood caps keep the ledger clean.
+    if (!hitRateLimit(`sms-wage:${worker.id}`, 40, 24 * 60 * 60 * 1000)) { smsReply(res, 'Daily wage-entry limit reached. Please try again tomorrow.'); return; }
     const entry = { id: randomUUID(), workerId: worker.id, date: new Date().toISOString(), type: 'received', amount, deductions: 0, overtime: 0, proofFileId: null, createdAt: new Date().toISOString(), source: 'sms' };
     wageEntries.push(entry); makeAudit('wage_entry_created', worker.id, entry.id, { source: 'sms' }); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, `₹${amount} wage saved.\\n${smsMenu(session.language)}`); return;
   }
@@ -450,6 +452,8 @@ async function handleWhatsAppMessage(req, res) {
   if (session.state === 'wage_amount') {
     const amount = Number(text.replace(/[^\d.]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) { whatsappResponse(res, language === 'en' ? 'Please reply with the amount, for example 500.' : 'कृपया रकम भेजें, जैसे 500।'); return; }
+    // Phase 33: same flood cap as the SMS channel.
+    if (!hitRateLimit(`sms-wage:${worker.id}`, 40, 24 * 60 * 60 * 1000)) { whatsappResponse(res, language === 'en' ? 'Daily wage-entry limit reached. Please try again tomorrow.' : 'आज की मजदूरी एंट्री सीमा पूरी हो गई। कल फिर कोशिश करें।'); return; }
     const entry = { id: randomUUID(), workerId: worker.id, date: new Date().toISOString(), type: 'received', amount, deductions: 0, overtime: 0, proofFileId: null, createdAt: new Date().toISOString(), source: 'whatsapp' };
     wageEntries.push(entry); session.state = 'menu'; makeAudit('wage_entry_created', worker.id, entry.id, { source: 'whatsapp' }); whatsappSessions.set(phone, session);
     whatsappResponse(res, language === 'en' ? `₹${amount} wage entry saved.\\n\\n${whatsappMenu(language)}` : `₹${amount} की मजदूरी दर्ज हो गई।\\n\\n${whatsappMenu(language)}`); return;
