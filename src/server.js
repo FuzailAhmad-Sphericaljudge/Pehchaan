@@ -1483,8 +1483,25 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 409, { error: 'An application or account with this email already exists.' });
       return;
     }
+    // Phase 33: the approval step must have something real to check. Every
+    // application carries at least one verifiable reference.
+    const registrationNumber = String(body.registrationNumber || '').trim();
+    const officialDomain = String(body.officialDomain || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/^www\./, '');
+    const hasDomain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(officialDomain);
+    if (!registrationNumber && !hasDomain) {
+      jsonResponse(res, 400, { error: 'A registration number or an official email/website domain is required so the platform team can verify the organization.' });
+      return;
+    }
+    if (registrationNumber && registrationNumber.length < 4) {
+      jsonResponse(res, 400, { error: 'The registration number looks too short to be real.' });
+      return;
+    }
     if (!checkRateLimit(`platform-signup:${req.socket.remoteAddress}`, 5, 15 * 60 * 1000)) {
       jsonResponse(res, 429, { error: 'Too many applications from this network. Please try again later.' });
+      return;
+    }
+    if (!checkRateLimit(`platform-signup-day:${req.socket.remoteAddress}`, 10, 24 * 60 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many applications from this network today. Please try again tomorrow.' });
       return;
     }
     const application = {
@@ -1494,6 +1511,8 @@ const server = http.createServer(async (req, res) => {
       contactName,
       contactEmail,
       contactPhone: String(body.contactPhone || '').trim() || null,
+      registrationNumber,
+      officialDomain: hasDomain ? officialDomain : null,
       notes: String(body.notes || '').trim(),
       status: 'pending',
       rejectionReason: null,
@@ -1502,7 +1521,7 @@ const server = http.createServer(async (req, res) => {
       createdAt: new Date().toISOString(),
     };
     platformApplications.set(application.id, application);
-    makeAudit(`${kind}_application_submitted`, contactEmail, application.id, { organization: organizationName });
+    makeAudit(`${kind}_application_submitted`, contactEmail, application.id, { organization: organizationName, registrationNumber: registrationNumber || null, officialDomain: application.officialDomain });
     persist();
     jsonResponse(res, 201, { submitted: true, application: serializeApplication(application), message: 'The Pehchaan team reviews every application before the account is activated.' });
     return;
