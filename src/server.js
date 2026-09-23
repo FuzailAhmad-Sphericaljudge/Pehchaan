@@ -2612,6 +2612,66 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Phase 33: NGO caseworkers report a complaint as fraudulent/spam with a
+  // reason. This is separate from the Phase 11 safety "false alarm" handling:
+  // false_alarm is for good-faith safety check-ins; fraud reports record
+  // bad-faith abuse so repeat patterns stay visible to the platform admin.
+  if (req.method === 'POST' && pathname.match(/^\/api\/cases\/[^/]+\/fraud-report$/)) {
+    const actor = authenticate(req, res, ['ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    if (!hitRateLimit(`fraud-report:${actor.sub}`, 30, 60 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many fraud reports in one hour. Please slow down and review more carefully.' });
+      return;
+    }
+    const body = await parseBody(req);
+    const caseId = pathname.split('/')[3];
+    const targetCase = findCase(caseId);
+    if (!targetCase) { jsonResponse(res, 404, { error: 'Case not found.' }); return; }
+    const reason = String(body.reason || '');
+    if (!fraudReasons.includes(reason)) {
+      jsonResponse(res, 400, { error: 'Reason must be spam, duplicate, false_complaint, harassment, or other.' });
+      return;
+    }
+    const report = {
+      id: randomUUID(),
+      caseId,
+      workerId: targetCase.workerId,
+      reason,
+      detail: String(body.detail || '').trim(),
+      reportedBy: actor.sub,
+      reviewedBy: null,
+      reviewedAt: null,
+      createdAt: new Date().toISOString(),
+    };
+    fraudReports.unshift(report);
+    const flagged = targetCase.fraudReview?.flagged;
+    targetCase.fraudReview = {
+      ...(targetCase.fraudReview || { flagged: false, signals: [], screenedAt: null, screenedBy: null }),
+      fraudReported: true,
+      lastReason: reason,
+    };
+    if (!flagged) targetCase.fraudReview.flagged = true;
+    if (!targetCase.fraudReview.screenedAt) targetCase.fraudReview.screenedAt = report.createdAt;
+    makeAudit('case_reported_fraudulent', actor.sub, caseId, { reason, workerId: targetCase.workerId, detail: report.detail || null });
+    persist();
+    jsonResponse(res, 201, { report: serializeFraudReport(report), case: targetCase });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/ngo/fraud-reports') {
+    const actor = authenticate(req, res, ['ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { reports: fraudReports.map(serializeFraudReport).slice(0, 100), total: fraudReports.length });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/platform/fraud-reports') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    jsonResponse(res, 200, { reports: fraudReports.map(serializeFraudReport).slice(0, 200), total: fraudReports.length, overview: fraudAbuseOverview() });
+    return;
+  }
+
   if (req.method === 'POST' && pathname.match(/^\/api\/cases\/[^/]+\/legal-documents$/)) {
     const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
     if (!actor) return;
