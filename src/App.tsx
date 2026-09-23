@@ -782,7 +782,7 @@ function PartnerSignup() {
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setBusy(true); setError("");
     const data = new FormData(event.currentTarget);
-    try { const result = await platformApi.signup({ kind, organizationName: data.get("organizationName"), contactName: data.get("contactName"), contactEmail: data.get("contactEmail"), contactPhone: data.get("contactPhone"), notes: data.get("notes") }); setSent(true); void result; } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not submit the application."); } finally { setBusy(false); }
+    try { const result = await platformApi.signup({ kind, organizationName: data.get("organizationName"), contactName: data.get("contactName"), contactEmail: data.get("contactEmail"), contactPhone: data.get("contactPhone"), registrationNumber: data.get("registrationNumber"), officialDomain: data.get("officialDomain"), notes: data.get("notes") }); setSent(true); void result; } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not submit the application."); } finally { setBusy(false); }
   };
   const submitRecovery = async (event: React.FormEvent) => {
     event.preventDefault(); setBusy(true); setRecoveryError(""); setRecoveryMessage("");
@@ -798,6 +798,9 @@ function PartnerSignup() {
         <label>Contact name<input name="contactName" required /></label>
         <label>Work email<input name="contactEmail" type="email" required /></label>
         <label>Phone (optional)<input name="contactPhone" type="tel" /></label>
+        <label>Registration number<input name="registrationNumber" placeholder="e.g. NGO Darpan ID, company CIN, society reg. no." /></label>
+        <label>Official email / website domain<input name="officialDomain" placeholder="e.g. asha-support.org" /></label>
+        <p className="helper">Give at least one of the two — registration number or official domain — so the platform team has something real to verify before approval.</p>
         <label>What will you use Pehchaan for?<textarea name="notes" /></label>
         <button className="button" disabled={busy}>{busy ? "Sending..." : "Submit application"}</button>
       </>}
