@@ -2960,7 +2960,8 @@ const server = http.createServer(async (req, res) => {
         title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug,
         locales: Object.entries(page.locales).filter(([, entry]) => entry?.body).map(([locale]) => locale),
         lastPublishedAt: Object.values(page.locales).map((entry) => entry?.publishedAt).filter(Boolean).sort().pop() || null,
-      }));
+      }))
+      .sort((a, b) => (a.kind === b.kind ? a.title.localeCompare(b.title) : a.kind === 'legal' ? -1 : 1));
     jsonResponse(res, 200, { pages });
     return;
   }
