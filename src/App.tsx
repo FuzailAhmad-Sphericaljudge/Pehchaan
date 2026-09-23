@@ -627,6 +627,44 @@ function PlatformApprovals() {
   </>;
 }
 
+function PlatformFraud() {
+  const [data, setData] = React.useState<{ reports: import("./api").FraudReport[]; total: number; overview: import("./api").FraudAbuseOverviewRow[] } | null>(null);
+  const [error, setError] = React.useState("");
+  React.useEffect(() => { platformApi.fraudReports().then(setData).catch(() => setError("Could not load fraud reports.")); }, []);
+  if (error) return <div className="error-box"><p>{error}</p></div>;
+  if (!data) return <Loading lang="en" />;
+  return <>
+    <h1>Fraud &amp; abuse review</h1>
+    <p className="helper">Caseworker fraud/spam reports and auto-flagged complaints, grouped by worker account. Counts only — case content stays with the responsible NGO. These signals are for investigation, never automatic punishment: a real worker can be wrongly matched by a similarity rule, so every pattern here is verified by a human first.</p>
+    <div className="stats-grid">
+      <div className="stat-card"><span>Total fraud reports</span><strong>{data.total}</strong></div>
+      <div className="stat-card"><span>Accounts with reports</span><strong>{data.overview.length}</strong></div>
+      <div className="stat-card"><span>Auto-flagged cases</span><strong>{data.overview.reduce((sum, row) => sum + row.flaggedCases, 0)}</strong></div>
+    </div>
+    <div className="list-panel"><h2>Abuse patterns by account</h2>
+      {data.overview.length ? data.overview.map((row) => (
+        <div className="list-row" key={row.workerId}>
+          <div>
+            <strong>{row.workerId.slice(0, 8)}…</strong>
+            <span>{row.fraudReports} fraud report{row.fraudReports === 1 ? "" : "s"} · {row.flaggedCases} flagged case{row.flaggedCases === 1 ? "" : "s"} · {row.dismissedByCaseworker} dismissed as genuine</span>
+            <small>{Object.entries(row.reasons).map(([reason, count]) => `${reason}: ${count}`).join(" · ")}{row.lastActivityAt ? ` · last ${new Date(row.lastActivityAt).toLocaleString()}` : ""}</small>
+          </div>
+        </div>
+      )) : <p>No fraud reports or flags yet.</p>}
+      <p className="helper">Dismissed-as-genuine counts matter: a high dismiss rate means the worker is probably real and being wrongly matched, not abusive.</p>
+    </div>
+    <div className="list-panel"><h2>Recent caseworker reports</h2>
+      {data.reports.length ? data.reports.slice(0, 50).map((report) => (
+        <div className="timeline-item" key={report.id}>
+          <strong>{report.reason}</strong>
+          <span>{report.caseId} · {report.reportedBy} · {new Date(report.createdAt).toLocaleString()}{report.reviewedAt ? ` · reviewed by ${report.reviewedBy}` : ""}</span>
+          {report.detail && <p>{report.detail}</p>}
+        </div>
+      )) : <p>No caseworker fraud reports yet.</p>}
+    </div>
+  </>;
+}
+
 function PlatformReference() {
   const [tab, setTab] = React.useState<"wages" | "schemes">("wages");
   const [rates, setRates] = React.useState<import("./api").MinimumWageRate[]>([]); const [schemes, setSchemes] = React.useState<import("./api").WelfareScheme[]>([]);
