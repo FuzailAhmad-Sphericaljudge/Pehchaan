@@ -1360,9 +1360,20 @@ const server = http.createServer(async (req, res) => {
         jsonResponse(res, 401, { error: 'Invalid OTP.' });
         return;
       }
+      // Phase 33: account-creation abuse limit — many NEW accounts from one
+      // IP in a day is a bot-farm signal. Accounts that already existed are
+      // exempt, so real users re-verifying are never blocked.
+      const recentlyExisted = Array.from(workers.values()).some((item) => item.id === challenge.workerId && new Date(item.createdAt).getTime() < Date.now() - 60 * 1000);
+      if (!recentlyExisted && !hitRateLimit(`worker-signup-ip:${clientIp(req)}`, 8, 24 * 60 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many new accounts from this network today. Please try again tomorrow or contact support.' });
+        return;
+      }
 
       const worker = ensureWorker(phone);
       otpChallenges.delete(phone);
+      if (!recentlyExisted) {
+        makeAudit('worker_account_created', worker.id, worker.id, { phone, ip: clientIp(req) });
+      }
       const access = issueSession(worker.id, 'worker');
       const refresh = issueSession(worker.id, 'worker', 'refresh');
       makeAudit('otp_verified', worker.id, worker.id, { phone });
