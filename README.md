@@ -163,6 +163,44 @@ notification_preferences, push_subscriptions). Set `PUSH_PROVIDER=vapid` plus
 `.env` to enable real browser push; generate keys with
 `npx web-push generate-vapid-keys`.
 
+## Fraud and abuse prevention (Phase 33)
+
+Before the platform opens to unscreened public sign-ups, Phase 33 adds basic
+fraud and abuse resistance. The guiding rule everywhere: **flag for human
+review, never auto-reject** — a genuine worker with a slow connection or a
+sincere repeated report must never be silently blocked.
+
+- **Duplicate/spam complaint screening.** New complaints (app, WhatsApp, and
+  SMS channels) are checked against recent complaints from the same account
+  (and the same IP) plus simple spam patterns (links, repeated characters,
+  promo terms, very short text). Matches set a `fraudReview` flag on the case;
+  the case is still created, notified, and fully actionable. NGO caseworkers
+  see a red "Flagged for review" badge in the inbox and a review panel on the
+  case where they can dismiss the flag (genuine) or confirm spam. Screening
+  never closes, hides, or deprioritizes a case by itself.
+- **Sign-up abuse limits.** On top of the Phase 8 limits: OTP requests per IP
+  per day (30), new worker accounts per IP per day (8; re-verifying existing
+  accounts are exempt), complaints per account per day (10) and per IP per day
+  (40), organization applications per IP per day (10). Every triggered limit
+  writes an `abuse_limit_triggered` audit entry.
+- **Employer & NGO verification.** Partner applications (`/partner-signup`)
+  must include a registration number (NGO Darpan ID, CIN, society registration)
+  or an official email/website domain. The server refuses to approve a pending
+  application without at least one, so the Phase 31 approval queue always has
+  something real to check; verification details are shown to the platform
+  admin alongside the application.
+- **Reporting a false complaint.** NGO caseworkers can report a complaint as
+  fraudulent/spam with a reason (`spam`, `duplicate`, `false_complaint`,
+  `harassment`, `other`). This is distinct from the Phase 11 "false alarm"
+  handling, which is for good-faith safety check-ins. Reports are logged in a
+  dedicated `fraud_reports` table, and the platform admin's Fraud & abuse panel
+  aggregates them per worker account (reports, flagged cases, and how many
+  flags caseworkers dismissed as genuine — a high dismiss count means the
+  worker is probably real and being wrongly matched).
+
+Schema lives in `migrations/021_fraud_prevention.sql` (fraud_reports,
+platform_applications verification columns, cases.fraud_review).
+
 ## Minimum wage and fair-pay checker
 
 Worker wage entries are compared with an admin-maintained reference table by
