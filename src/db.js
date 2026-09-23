@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions, fraudReports, contentPages, contentVersions] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions, fraudReports, contentPages, contentVersions, legalReviews] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
