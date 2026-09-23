@@ -1626,6 +1626,13 @@ const server = http.createServer(async (req, res) => {
     const decision = String(body.decision || '');
     if (decision === 'approve') {
       if (item.status === 'approved') { jsonResponse(res, 409, { error: 'This application is already approved.' }); return; }
+      // Phase 33: approval must have something real to verify. Seeded pilot
+      // organizations keep working because their records were already approved
+      // with platform-team review; guard only the fresh pending ones.
+      if (item.status === 'pending' && !item.registrationNumber && !item.officialDomain) {
+        jsonResponse(res, 400, { error: 'This application has no verification info (registration number or official domain). Ask the applicant to reapply with verifiable details before approving.' });
+        return;
+      }
       approveApplication(actor, item);
       jsonResponse(res, 200, { application: serializeApplication(item) });
       return;
@@ -1641,7 +1648,7 @@ const server = http.createServer(async (req, res) => {
       for (const [jti, session] of sessions) {
         if (session.subject === item.contactEmail) sessions.delete(jti);
       }
-      makeAudit(`${item.kind}_application_rejected`, actor.sub, item.id, { organization: item.organizationName, reason });
+      makeAudit(`${item.kind}_application_rejected`, actor.sub, item.id, { organization: item.organizationName, reason, verification: { registrationNumber: item.registrationNumber || null, officialDomain: item.officialDomain || null } });
       persist();
       jsonResponse(res, 200, { application: serializeApplication(item) });
       return;
