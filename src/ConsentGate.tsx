@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { contentApi, type ContentPage, type Language } from "./api";
+import { contentApi, workerApi, type ContentPage, type Language } from "./api";
 
 // Tiny local markdown renderer for the consent notice (same approach as the
 // public content pages): escapes HTML first, then formats the small subset
@@ -22,11 +22,14 @@ function miniMarkdown(text: string): string {
 // Phase 35: on-screen consent gate shown in the worker area before the first
 // data submission. The notice text is the versioned, CMS-backed
 // "worker-consent" legal page (EN/HI), so any policy change stays in the
-// content system — the gate itself only records an on-device acknowledgement
-// timestamp. DRAFT content is labelled until legal review completes.
+// content system — the gate records a server-side acknowledgement pinned to
+// the published notice version, with an on-device cache for instant UI.
+// DRAFT content is labelled until legal review completes.
 export function ConsentGate({ lang, children }: { lang: Language; children: React.ReactNode }) {
   const storageKey = "pehchaan-consent-ack-v1";
   const [page, setPage] = React.useState<ContentPage | null>(null);
+  // Instant UI state from the on-device cache; the server record is checked
+  // right after so clearing browser storage cannot rewind a worker's consent.
   const [acknowledged, setAcknowledged] = React.useState(() => localStorage.getItem(storageKey) !== null);
   const [busy, setBusy] = React.useState(false);
   React.useEffect(() => {
@@ -34,13 +37,33 @@ export function ConsentGate({ lang, children }: { lang: Language; children: Reac
       .page("worker-consent")
       .then(setPage)
       .catch(() => setPage(null));
+    workerApi.consentNotice
+      .get()
+      .then((status) => {
+        if (status.acknowledged) {
+          localStorage.setItem(storageKey, status.acknowledgedAt || new Date().toISOString());
+          setAcknowledged(true);
+        }
+      })
+      .catch(() => undefined);
   }, []);
   if (acknowledged) return <>{children}</>;
   const locale = page?.locales?.[lang]?.body ? lang : page?.locales?.en?.body ? "en" : null;
   const accept = () => {
     setBusy(true);
-    localStorage.setItem(storageKey, new Date().toISOString());
-    setAcknowledged(true);
+    workerApi.consentNotice
+      .acknowledge()
+      .then(() => {
+        localStorage.setItem(storageKey, new Date().toISOString());
+        setAcknowledged(true);
+      })
+      .catch(() => {
+        // Offline fallback: record locally now; the server catches up via the
+        // status check the next time the worker opens the app online.
+        localStorage.setItem(storageKey, new Date().toISOString());
+        setAcknowledged(true);
+      })
+      .finally(() => setBusy(false));
   };
   return (
     <div className="list-panel consent-gate">
