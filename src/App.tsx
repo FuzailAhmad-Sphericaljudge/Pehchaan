@@ -536,11 +536,11 @@ function PlatformLogin({ setSession }: { setSession: (session: PlatformSession) 
 
 function PlatformNav({ logout }: { logout: () => void }) {
   const navigate = useNavigate();
-  return <aside className="worker-nav ngo-nav"><Link className="brand" to="/platform">Pehchaan<span>.</span></Link><strong>Platform admin</strong><button onClick={() => navigate("/platform")}>Overview</button><button onClick={() => navigate("/platform/approvals")}>Approval queue</button><button onClick={() => navigate("/platform/reference")}>Reference data</button><button onClick={() => navigate("/platform/accounts")}>Accounts &amp; recovery</button><button onClick={() => navigate("/platform/audit")}>Audit log</button><button className="logout-link" onClick={logout}>Log out</button></aside>;
+  return <aside className="worker-nav ngo-nav"><Link className="brand" to="/platform">Pehchaan<span>.</span></Link><strong>Platform admin</strong><button onClick={() => navigate("/platform")}>Overview</button><button onClick={() => navigate("/platform/approvals")}>Approval queue</button><button onClick={() => navigate("/platform/fraud")}>Fraud &amp; abuse</button><button onClick={() => navigate("/platform/reference")}>Reference data</button><button onClick={() => navigate("/platform/accounts")}>Accounts &amp; recovery</button><button onClick={() => navigate("/platform/audit")}>Audit log</button><button className="logout-link" onClick={logout}>Log out</button></aside>;
 }
 
 function PlatformArea({ logout }: { logout: () => void }) {
-  return <main className="worker-app"><PlatformNav logout={logout} /><section className="worker-content"><Routes><Route index element={<PlatformOverview />} /><Route path="approvals" element={<PlatformApprovals />} /><Route path="reference" element={<PlatformReference />} /><Route path="accounts" element={<PlatformAccounts />} /><Route path="audit" element={<PlatformAudit />} /></Routes></section></main>;
+  return <main className="worker-app"><PlatformNav logout={logout} /><section className="worker-content"><Routes><Route index element={<PlatformOverview />} /><Route path="approvals" element={<PlatformApprovals />} /><Route path="fraud" element={<PlatformFraud />} /><Route path="reference" element={<PlatformReference />} /><Route path="accounts" element={<PlatformAccounts />} /><Route path="audit" element={<PlatformAudit />} /></Routes></section></main>;
 }
 
 function PlatformOverview() {
