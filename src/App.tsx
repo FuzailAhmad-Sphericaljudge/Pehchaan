@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { ApiError, authApi, CaseDetail, contentApi, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, notificationApi, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
 import { addOfflineItem, listOfflineItems, OfflineItem, removeOfflineItem, updateOfflineItem } from "./offline";
+import { ConsentGate } from "./ConsentGate";
 import { disablePush, enablePush, pushSupported } from "./push";
 
 const baseLabels = {
@@ -408,7 +409,7 @@ function WorkerArea({ lang, session, logout }: { lang: Language; session: Sessio
   const stubDashboard: Dashboard = { worker: { id: session.workerId, phone: "", role: "worker", language: lang, profile: {} }, wageEntries: [], checkIns: [], cases: [] };
   if (loading && !dashboard) return <WorkerLayout lang={lang} dashboard={stubDashboard} logout={logout}><Loading lang={lang} /></WorkerLayout>;
   if (!dashboard) return <WorkerLayout lang={lang} dashboard={stubDashboard} logout={logout}><ErrorBox lang={lang} offline={offline} onRetry={() => void refresh()} /></WorkerLayout>;
-  return <WorkerLayout lang={lang} dashboard={dashboard} logout={logout}>{offline && <ErrorBox lang={lang} offline onRetry={() => void refresh()} />}<Routes><Route index element={<DashboardHome lang={lang} dashboard={dashboard} />} /><Route path="wages" element={<Wages lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="check-in" element={<CheckIn lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="report" element={<Report lang={lang} dashboard={dashboard} refresh={refresh} />} /><Route path="cases" element={<Cases lang={lang} dashboard={dashboard} />} /><Route path="schemes" element={<Schemes lang={lang} dashboard={dashboard} />} /><Route path="contacts" element={<Contacts lang={lang} dashboard={dashboard} />} /><Route path="profile" element={<Profile lang={lang} dashboard={dashboard} refresh={refresh} />} /></Routes></WorkerLayout>;
+  return <WorkerLayout lang={lang} dashboard={dashboard} logout={logout}>{offline && <ErrorBox lang={lang} offline onRetry={() => void refresh()} />}<Routes><Route index element={<DashboardHome lang={lang} dashboard={dashboard} />} /><Route path="wages" element={<ConsentGate lang={lang}><Wages lang={lang} dashboard={dashboard} refresh={refresh} /></ConsentGate>} /><Route path="check-in" element={<ConsentGate lang={lang}><CheckIn lang={lang} dashboard={dashboard} refresh={refresh} /></ConsentGate>} /><Route path="report" element={<ConsentGate lang={lang}><Report lang={lang} dashboard={dashboard} refresh={refresh} /></ConsentGate>} /><Route path="cases" element={<Cases lang={lang} dashboard={dashboard} />} /><Route path="schemes" element={<Schemes lang={lang} dashboard={dashboard} />} /><Route path="contacts" element={<Contacts lang={lang} dashboard={dashboard} />} /><Route path="profile" element={<Profile lang={lang} dashboard={dashboard} refresh={refresh} />} /></Routes></WorkerLayout>;
 }
 
 function ForOrganizations({ lang }: { lang: Language }) {
