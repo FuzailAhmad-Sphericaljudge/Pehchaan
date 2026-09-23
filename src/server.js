@@ -3427,6 +3427,7 @@ const server = http.createServer(async (req, res) => {
       'POST /api/auth/verify-otp',
       'GET /api/workers/:id',
       'PATCH /api/worker/profile',
+      'GET|POST /api/worker/consent-notice',
       'POST /api/wage-entries',
       'POST /api/check-ins',
       'POST /api/cases',
