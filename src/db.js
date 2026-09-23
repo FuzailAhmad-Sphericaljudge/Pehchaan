@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions, fraudReports] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -41,8 +41,9 @@ export async function loadState() {
     query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 2000'),
     query('SELECT * FROM notification_preferences'),
     query('SELECT * FROM push_subscriptions'),
+    query('SELECT * FROM fraud_reports ORDER BY created_at DESC'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows, fraudReports: fraudReports.rows };
 }
 
 export async function saveState(state) {
