@@ -1,8 +1,9 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
+import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, notificationApi, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
 import { addOfflineItem, listOfflineItems, OfflineItem, removeOfflineItem, updateOfflineItem } from "./offline";
+import { disablePush, enablePush, pushSupported } from "./push";
 
 const baseLabels = {
   hi: {
@@ -284,6 +285,90 @@ function Report({ lang, dashboard, refresh }: { lang: Language; dashboard: Dashb
 }
 
 function Cases({ lang, dashboard }: { lang: Language; dashboard: Dashboard }) { const t = labels[lang]; const stages = ["new", "assigned", "in_progress", "resolved"]; return <><h1>{t.cases}</h1><div className="list-panel">{dashboard.cases.length ? dashboard.cases.map((item) => <div className="list-row" key={item.id}><strong>{translatedCaseType(lang, item.type)}</strong><span>{translatedStatus(lang, item.status)} · {item.priority} · {new Date(item.createdAt).toLocaleDateString()}</span><div className="case-timeline" aria-label="Case progress">{stages.map((stage, index) => <span className={stages.indexOf(item.status) >= index ? "timeline-stage complete" : "timeline-stage"} key={stage}><i>{index + 1}</i>{stage === "new" ? "Received" : stage === "assigned" ? "Under review" : stage === "in_progress" ? "Action taken" : "Resolved"}</span>)}</div><p>{item.summary}</p></div>) : <p>{t.noData}</p>}</div></>; }
+
+type AppNotification = import("./api").AppNotification;
+type NotificationPreferences = import("./api").NotificationPreferences;
+
+function useNotifications(enabled: boolean) {
+  const [items, setItems] = React.useState<AppNotification[]>([]);
+  const [unread, setUnread] = React.useState(0);
+  const refresh = React.useCallback(async () => {
+    if (!enabled) return;
+    try { const result = await notificationApi.list(); setItems(result.notifications); setUnread(result.unread); } catch { /* silent: the bell hides when unreachable */ }
+  }, [enabled]);
+  React.useEffect(() => {
+    if (!enabled) return;
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30 * 1000);
+    const onUpdated = () => void refresh();
+    window.addEventListener("pehchaan-notifications-updated", onUpdated);
+    return () => { window.clearInterval(timer); window.removeEventListener("pehchaan-notifications-updated", onUpdated); };
+  }, [refresh]);
+  return { items, unread, refresh };
+}
+
+const notificationTypeLabel: Record<AppNotification["type"], (lang: Language) => string> = {
+  case_status_changed: (lang) => (lang === "hi" ? "केस अपडेट" : "Case update"),
+  case_note_added: (lang) => (lang === "hi" ? "केसवर्कर नोट" : "Caseworker note"),
+  wage_flagged: (lang) => (lang === "hi" ? "वेतन संदर्भ जांच" : "Fair-pay check"),
+  scheme_matched: (lang) => (lang === "hi" ? "संभावित योजना" : "Scheme match"),
+  case_assigned: (lang) => (lang === "hi" ? "केस असाइनमेंट" : "Assignment"),
+  case_reopened: (lang) => (lang === "hi" ? "केस फिर खुला" : "Case re-opened"),
+  alert_escalated: (lang) => (lang === "hi" ? "सुरक्षा अलर्ट" : "Safety alert"),
+};
+
+function NotificationCenter({ lang, enabled }: { lang: Language; enabled: boolean }) {
+  const { items, unread, refresh } = useNotifications(enabled);
+  const [open, setOpen] = React.useState(false);
+  const [showSettings, setShowSettings] = React.useState(false);
+  const [prefs, setPrefs] = React.useState<NotificationPreferences | null>(null);
+  const [pushState, setPushState] = React.useState<"idle" | "subscribed" | "denied" | "unsupported" | "error">("idle");
+  const [pushMessage, setPushMessage] = React.useState("");
+  const hi = lang === "hi";
+  React.useEffect(() => { if (open && !prefs) void notificationApi.preferences().then((result) => setPrefs(result.preferences)).catch(() => setPrefs(null)); }, [open, prefs]);
+  React.useEffect(() => { if (pushSupported()) setPushState(Notification.permission === "granted" ? "subscribed" : Notification.permission === "denied" ? "denied" : "idle"); else setPushState("unsupported"); }, []);
+  const markAll = async () => { try { await notificationApi.markRead(); await refresh(); } catch { /* ignore */ } };
+  const togglePrefs = async (key: keyof NotificationPreferences) => {
+    if (!prefs) return;
+    const next = { ...prefs, [key]: !prefs[key] }; setPrefs(next);
+    try { await notificationApi.updatePreferences({ [key]: next[key] }); window.dispatchEvent(new Event("pehchaan-notifications-updated")); } catch { setPrefs(prefs); }
+  };
+  const optIn = async () => {
+    setPushMessage("");
+    const result = await enablePush();
+    setPushState(result === "subscribed" ? "subscribed" : result);
+    setPushMessage(result === "subscribed" ? (hi ? "पुश नोटिफिकेशन चालू।" : "Push notifications are on.") : result === "denied" ? (hi ? "ब्राउज़र ने अनुमति अस्वीकार की।" : "Permission was denied in the browser.") : result === "unsupported" ? (hi ? "इस ब्राउज़र में पुश उपलब्ध नहीं है।" : "Push is not available in this browser.") : (hi ? "पुश सेटअप नहीं हो सका।" : "Push could not be set up."));
+  };
+  const optOut = async () => { await disablePush(); setPushState("idle"); setPushMessage(hi ? "पुश नोटिफिकेशन बंद।" : "Push notifications are off."); };
+  if (!enabled) return null;
+  return <div className="notif-wrap">
+    <button className="notif-bell" aria-label={hi ? `नोटिफिकेशन${unread ? ` (${unread} नई)` : ""}` : `Notifications${unread ? ` (${unread} unread)` : ""}`} onClick={() => { setOpen(!open); if (!open && unread) void markAll(); }}>
+      🔔{unread > 0 && <span className="notif-badge">{unread > 99 ? "99+" : unread}</span>}
+    </button>
+    {open && <div className="notif-panel" role="dialog" aria-label={hi ? "नोटिफिकेशन सेंटर" : "Notification center"}>
+      <div className="notif-head"><strong>{hi ? "नोटिफिकेशन" : "Notifications"}</strong><button className="button button-small" onClick={() => setShowSettings(!showSettings)}>{hi ? "सेटिंग्स" : "Settings"}</button></div>
+      {showSettings && <div className="notif-settings">
+        <p className="helper">{hi ? "गैर-ज़रूरी नोटिफिकेशन बंद करें। सुरक्षा अलर्ट हमेशा भेजे जाते हैं।" : "Turn routine notifications off. Safety alerts are always delivered."}</p>
+        {prefs ? ([
+          ["caseUpdates", hi ? "केस स्थिति बदलना" : "Case status changes"],
+          ["caseNotes", hi ? "केसवर्कर नोट्स" : "Caseworker notes"],
+          ["wageFlags", hi ? "वेतन संदर्भ जांच" : "Fair-pay wage checks"],
+          ["schemeMatches", hi ? "संभावित सरकारी योजनाएं" : "New scheme matches"],
+        ] as [keyof NotificationPreferences, string][]).map(([key, label]) => <label key={key}><input type="checkbox" checked={prefs[key]} onChange={() => void togglePrefs(key)} /> {label}</label>) : <p className="helper">{hi ? "प्राथमिकताएं लोड नहीं हुईं।" : "Preferences could not be loaded."}</p>}
+        <div className="notif-push-row">
+          <span>{hi ? "पुश (ऐप बंद होने पर भी)" : "Push (even when the app is closed)"}</span>
+          {pushState === "subscribed" ? <button className="button button-small" onClick={() => void optOut()}>{hi ? "बंद करें" : "Turn off"}</button> : <button className="button button-small" disabled={pushState === "unsupported" || pushState === "denied"} onClick={() => void optIn()}>{hi ? "चालू करें" : "Enable"}</button>}
+        </div>
+        {pushMessage && <p className="helper">{pushMessage}</p>}
+      </div>}
+      <div className="notif-list">
+        {items.length ? items.map((item) => <div className={`notif-item${item.readAt ? "" : " notif-unread"}`} key={item.id}>
+          <div><strong>{notificationTypeLabel[item.type]?.(lang) || item.type}{item.priority === "high" ? " · ⚠" : ""}</strong><span>{new Date(item.createdAt).toLocaleString()}</span><p>{item.body}</p></div>
+        </div>) : <p className="empty-state">{hi ? "अभी कोई नोटिफिकेशन नहीं।" : "No notifications yet."}</p>}
+      </div>
+    </div>}
+  </div>;
+}
 
 function WorkerArea({ lang, session, logout }: { lang: Language; session: Session; logout: () => void }) {
   const [dashboard, setDashboard] = React.useState<Dashboard | null>(null); const [loading, setLoading] = React.useState(true); const [offline, setOffline] = React.useState(false);
