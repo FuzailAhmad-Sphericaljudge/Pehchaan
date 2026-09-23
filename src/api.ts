@@ -207,6 +207,21 @@ export type PlatformRecoveryRequest = { id: string; applicationId: string | null
 export type PlatformOverview = { generatedAt: string; aggregateOnly: boolean; organizations: { active: number; deactivated: number }; cases: { total: number; open: number; openByStatus: Record<string, number>; resolved: number; createdLast30Days: number }; workers: { total: number; registeredLast30Days: number }; alerts: { pending: number; escalated: number; acknowledged: number }; medianResponseHours: number | null; channels: Record<string, number> };
 export type PlatformSummary = { generatedAt: string; organizations: { total: number; ngos: number; employers: number; active: number; deactivated: number }; queue: { pending: number; pendingNgos: number; pendingEmployers: number }; cases: { total: number; open: number; resolved: number }; workers: { total: number }; recoveryRequests: number; referenceData: { minimumWageRates: number; welfareSchemes: number }; fraud: { totalReports: number; accountsWithReports: number; flaggedCases: number; pendingReview: number } };
 
+export type ContentPageEntry = { body: string; publishedAt: string; publishedBy: string };
+export type ContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry> };
+export type ContentDraft = { body: string; savedAt: string; savedBy: string };
+export type PlatformContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry>; drafts: Record<string, ContentDraft>; staleLocales: string[]; publishedLocales: string[]; updatedAt: string | null; updatedBy: string | null };
+export type ContentVersion = { id: string; slug: string; kind: "legal" | "static"; locale: string; body: string; publishedBy: string; note: string; createdAt: string };
+
+export const contentApi = {
+  page: (slug: string) => request<ContentPage>(`/api/content/${encodeURIComponent(slug)}`),
+  list: () => request<{ pages: PlatformContentPage[]; locales: string[]; localeNames: Record<string, string> }>("/api/platform/content"),
+  saveDraft: (slug: string, locale: string, body: string) => request<{ slug: string; locale: string; draft: ContentDraft }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}`, { ...json({ body }), method: "PUT" }),
+  publish: (slug: string, locale: string, body: string, note = "") => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/publish`, json({ body, note })),
+  versions: (slug: string) => request<{ slug: string; kind: ContentPage["kind"]; versions: ContentVersion[] }>(`/api/platform/content/${encodeURIComponent(slug)}/versions`),
+  restore: (slug: string, versionId: string) => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/restore`, json({ versionId })),
+};
+
 export const platformApi = {
   overview: () => request<{ overview: PlatformOverview; summary: PlatformSummary }>("/api/platform/overview"),
   applications: (status?: "pending" | "approved" | "rejected" | "deactivated") => request<{ applications: PlatformApplication[]; total: number }>(`/api/platform/applications${status ? `?status=${encodeURIComponent(status)}` : ""}`),
