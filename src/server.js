@@ -43,6 +43,10 @@ const fraudReports = [];
 const fraudScreens = [];
 const contentPages = new Map();
 const contentVersions = [];
+// Phase 35: per-slug legal-review sign-off. Every seeded policy ships as a
+// DRAFT; after a qualified lawyer approves the text, a platform admin records
+// the review here and the DRAFT labeling stops for that document.
+const legalReview = new Map();
 
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
@@ -64,7 +68,7 @@ const maxTrustedContacts = 5;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()), fraudReports: fraudReports.slice(0, 2000), contentPages: Array.from(contentPages.values()), contentVersions: contentVersions.slice(0, 1000) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()), fraudReports: fraudReports.slice(0, 2000), contentPages: Array.from(contentPages.values()), contentVersions: contentVersions.slice(0, 1000), legalReviews: Array.from(legalReviews.entries()) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -3014,6 +3018,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Phase 35: record (or replace) the legal-review sign-off for a document.
+  // The review pins the version that was approved; publishing new text after
+  // the review clears the sign-off until it is reviewed again.
+  if (req.method === 'POST' && pathname.match(/^\/api\/platform\/content\/[^/]+\/review$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    // Path is /api/platform/content/:slug/review — index 4.
+    const slug = decodeURIComponent(pathname.split('/')[4]);
+    const known = contentSlugs.find((entry) => entry.slug === slug);
+    if (!known || known.kind !== 'legal') { jsonResponse(res, 400, { error: 'Legal review applies only to legal pages.' }); return; }
+    const body = await parseBody(req);
+    const reviewedBy = String(body.reviewedBy || '').trim();
+    if (!reviewedBy) { jsonResponse(res, 400, { error: 'Name the reviewer who approved this document.' }); return; }
+    const page = contentPages.get(slug);
+    const version = page?.locales?.en?.publishedAt || null;
+    if (!version) { jsonResponse(res, 409, { error: 'Publish the document before recording a review.' }); return; }
+    const entry = { reviewedBy, reviewedAt: new Date().toISOString(), version };
+    legalReview.set(slug, entry);
+    makeAudit('legal_review_recorded', actor.sub, slug, { reviewedBy, version });
+    persist();
+    jsonResponse(res, 200, { slug, review: entry });
+    return;
+  }
+
   // Phase 34: save a draft for one locale of one page. Drafts are only
   // visible in the platform panel, never on the public site.
   if (req.method === 'PUT' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+$/)) {
@@ -3064,6 +3092,8 @@ const server = http.createServer(async (req, res) => {
     delete page.drafts[locale];
     page.updatedAt = now;
     page.updatedBy = actor.sub;
+    // Phase 35: new legal text supersedes a recorded review until re-approved.
+    if (page.kind === 'legal') legalReview.delete(slug);
     const version = newContentVersion({ slug, kind: page.kind, locale, body: sourceBody, publishedBy: actor.sub, note: String(body.note || '') });
     contentVersions.unshift(version);
     makeAudit('content_published', actor.sub, slug, { locale, versionId: version.id, kind: page.kind, characters: sourceBody.length });
@@ -3512,6 +3542,7 @@ async function start() {
     for (const row of state.cases) { if (row.fraud_review && Object.keys(row.fraud_review).length) { const existing = cases.find((item) => item.id === row.id); if (existing) existing.fraudReview = row.fraud_review; } }
     for (const row of state.contentPages || []) contentPages.set(row.slug, { slug: row.slug, kind: row.kind, locales: row.locales || {}, drafts: row.drafts || {}, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null });
     for (const row of state.contentVersions || []) contentVersions.push({ id: row.id, slug: row.slug, kind: row.kind, locale: row.locale, body: row.body, publishedBy: row.publishedBy, note: row.note || '', createdAt: row.createdAt });
+    for (const row of state.legalReviews || []) legalReview.set(row.slug, { reviewedBy: row.reviewed_by, reviewedAt: new Date(row.reviewed_at).toISOString(), version: row.version });
   }
   // Phase 34: fresh installs (and fresh databases) get the current in-app
   // text as the first published version, so public pages work immediately.
