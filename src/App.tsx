@@ -756,7 +756,7 @@ function PlatformContentEditor() {
     <p className="helper">Edit the text-heavy pages — Privacy Policy, Terms of Use, FAQ, mission text — without a code deploy. Every publish stores a version; legal pages keep their full history. Languages that have not been updated since the most recent publish are marked stale.</p>
     <div className="detail-grid cms-grid">
       <div className="list-panel cms-list">
-        {pages.map((item) => <button className={item.slug === selected?.slug ? "filter active" : "filter"} onClick={() => setSelected({ slug: item.slug, locale: item.publishedLocales[0] || locales[0] })} key={item.slug}>{item.title}{item.kind === "legal" ? " ⚖" : ""}{item.staleLocales.length ? <small> · {item.staleLocales.length} stale</small> : ""}</button>)}
+        {pages.map((item) => <button className={item.slug === selected?.slug ? "filter active" : "filter"} onClick={() => setSelected({ slug: item.slug, locale: item.publishedLocales[0] || locales[0] })} key={item.slug}>{item.title}{item.kind === "legal" ? " ⚖" : ""}{item.staleLocales.length ? <small> · {item.staleLocales.length} stale</small> : ""}{item.versionCount ? <small> · {item.versionCount} versions</small> : ""}{Object.keys(item.drafts).length ? " ✎" : ""}</button>)}
       </div>
       {page && selected && <div className="list-panel cms-editor">
         <h2>{page.title}</h2>
