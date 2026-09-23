@@ -472,6 +472,9 @@ function ContentPage({ lang, slug }: { lang: Language; slug: string }) {
   React.useEffect(() => { setPage(null); setError(false); setViewLocale(null); setHistory(null); setArchiveBody(null); contentApi.page(slug).then(setPage).catch(() => setError(true)); }, [slug]);
   React.useEffect(() => {
     setHistory(null); setArchiveBody(null); setArchiveMeta(null);
+    // Version history is a legal-pages feature; skip the request for static
+    // pages like the FAQ to save a doomed round trip.
+    if (slug === "faq" || slug === "about-mission") return;
     contentApi.versions(slug).then((result) => setHistory(result.versions)).catch(() => setHistory(null));
   }, [slug]);
   const locales = page ? Object.keys(page.locales) : [];
