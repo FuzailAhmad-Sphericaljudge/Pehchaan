@@ -3016,7 +3016,9 @@ const server = http.createServer(async (req, res) => {
       const lastPublishedAt = Math.max(0, ...Object.values(page.locales).map((entry) => entry?.publishedAt ? new Date(entry.publishedAt).getTime() : 0));
       const staleLocales = contentStaleLocales(page);
       const versionCount = contentVersions.filter((item) => item.slug === page.slug).length;
-      return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales, versionCount };
+      const review = legalReview.get(page.slug) || null;
+      const reviewed = Boolean(review && page.locales.en?.publishedAt && review.version === page.locales.en.publishedAt);
+      return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales, versionCount, review: reviewed ? { reviewedBy: review.reviewedBy, reviewedAt: review.reviewedAt } : null };
     });
     jsonResponse(res, 200, { pages, locales: contentLocales, localeNames: contentLocaleNames });
     return;
