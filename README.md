@@ -278,3 +278,15 @@ FAQ, About mission text, and the welfare-scheme descriptions. Key properties:
   no-op so version history stays meaningful, and scheme descriptions fall
   back to the default text when a translation is blank instead of showing an
   empty section to the worker.
+
+## Legal & policy drafts (Phase 35)
+
+The Privacy Policy, Terms of Use, and the on-screen worker consent notice
+exist as plain-language DRAFT content in English and Hindi, seeded into the
+CMS and editable like every other page (the consent notice is the legal page
+`worker-consent`). Review copies live in `docs/legal/` with a DRAFT —
+PENDING LEGAL REVIEW banner; **a qualified lawyer must approve them before
+they are treated as final**. The consent gate screen shows the versioned
+notice before a worker's first wage entry, check-in, or complaint, and links
+to the full policy. Publishing one locale names the languages that just went
+stale so an admin is explicitly prompted to update them.
