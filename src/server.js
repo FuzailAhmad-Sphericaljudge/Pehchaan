@@ -720,6 +720,9 @@ const contentLocaleNames = { en: 'English', hi: 'हिन्दी', bn: 'ব�
 const contentSlugs = [
   { slug: 'privacy-policy', kind: 'legal', title: 'Privacy Policy' },
   { slug: 'terms-of-use', kind: 'legal', title: 'Terms of Use' },
+  // Phase 35: the exact on-screen consent text shown before a worker's first
+  // data submission, versioned like the other legal documents.
+  { slug: 'worker-consent', kind: 'legal', title: 'Worker consent notice' },
   { slug: 'faq', kind: 'static', title: 'FAQ' },
   { slug: 'about-mission', kind: 'static', title: 'About — mission' },
 ];
