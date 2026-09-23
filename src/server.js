@@ -2443,7 +2443,12 @@ const server = http.createServer(async (req, res) => {
       }
 
       cases.push(newCase);
-      notifyNgoCaseworkers({ caseId: newCase.id, type: 'case_assigned', title: 'New case in the inbox', body: `${newCase.id}: ${buildAutoSummary(newCase)}`, meta: { newCase: true, priority: newCase.priority, type: newCase.type } });
+      // Phase 33: duplicate/spam screening flags for caseworker review; the
+      // case is still created, notified, and fully actionable either way.
+      const fraudReview = applyFraudScreening(newCase, { ip: clientIp(req) });
+      recordFraudScreenSeen(clientIp(req), newCase.summary);
+      if (fraudReview) makeAudit('case_flagged_for_fraud_review', 'system:fraud-screening', newCase.id, { signals: fraudReview.signals });
+      notifyNgoCaseworkers({ caseId: newCase.id, type: 'case_assigned', title: 'New case in the inbox', body: `${newCase.id}: ${buildAutoSummary(newCase)}`, meta: { newCase: true, priority: newCase.priority, type: newCase.type, fraudFlagged: Boolean(fraudReview) } });
       const highRisk = newCase.immediateDanger || newCase.happeningNow || newCase.type === 'debt_bondage';
       const alert = highRisk ? createSafetyAlert({
         caseId: newCase.id, workerId: newCase.workerId, kind: 'high_risk_complaint',
