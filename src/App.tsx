@@ -745,6 +745,7 @@ function PlatformContentEditor() {
   const [busy, setBusy] = React.useState(false);
   const [preview, setPreview] = React.useState(false);
   const [versions, setVersions] = React.useState<import("./api").ContentVersion[] | null>(null);
+  const [dirty, setDirty] = React.useState(false);
   const load = React.useCallback(async () => {
     try {
       const result = await contentApi.list();
@@ -758,6 +759,7 @@ function PlatformContentEditor() {
     if (!page || !selected) return;
     const draft = page.drafts[selected.locale];
     setBody(draft?.body || page.locales[selected.locale]?.body || "");
+    setDirty(false);
     setNote(""); setPreview(false); setVersions(null); setMessage(""); setError("");
   }, [selected?.slug, selected?.locale]);
   if (error && !pages.length) return <div className="error-box"><p>{error}</p></div>;
@@ -775,16 +777,19 @@ function PlatformContentEditor() {
         {page.staleLocales.includes(selected.locale) && <p className="helper">⚠ This language has not been updated since the latest publish. Please update it so no language is left behind.</p>}
         {preview
           ? <div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(body) }} />
-          : <textarea className="cms-textarea" value={body} onChange={(event) => setBody(event.target.value)} rows={16} aria-label={`Body for ${page.title} (${localeNames[selected.locale] || selected.locale})`} />}
+          : <textarea className="cms-textarea" value={body} onChange={(event) => { setBody(event.target.value); setDirty(true); }} rows={16} aria-label={`Body for ${page.title} (${localeNames[selected.locale] || selected.locale})`} />}
         <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Change note (optional, saved with the version)" aria-label="Change note" />
         <div className="ai-actions">
-          <button className="button button-small" disabled={busy} onClick={() => { setBusy(true); contentApi.saveDraft(page.slug, selected.locale, body).then(() => { setMessage("Draft saved."); setError(""); }).catch(() => { setError("Could not save the draft."); }).finally(() => setBusy(false)); }}>Save draft</button>
+          <button className="button button-small" disabled={busy} onClick={() => { setBusy(true); contentApi.saveDraft(page.slug, selected.locale, body).then(() => { setDirty(false); setMessage("Draft saved."); setError(""); }).catch(() => { setError("Could not save the draft."); }).finally(() => setBusy(false)); }}>Save draft</button>
+          <button className="button button-small" disabled={busy || !page.drafts[selected.locale]} onClick={() => { setBusy(true); contentApi.discardDraft(page.slug, selected.locale).then(() => { setMessage("Draft discarded — the editor now shows the published text."); setError(""); return load(); }).catch(() => setError("Could not discard the draft.")).finally(() => setBusy(false)); }}>Discard draft</button>
           <button className="button button-small" onClick={() => setPreview((value) => !value)}>{preview ? "Edit" : "Preview"}</button>
           <button className="button button-small" disabled={busy || !body.trim()} onClick={() => { setBusy(true); contentApi.publish(page.slug, selected.locale, body, note).then((result) => { const stale = result.staleLocales || page.staleLocales.filter((item) => item !== selected.locale); setMessage(stale.length ? `Published. Now out of date in: ${stale.map((item) => localeNames[item] || item).join(", ")}. Please update those languages.` : "Published in all languages with a live version."); setError(""); return load(); }).catch(() => { setError("Could not publish."); }).finally(() => setBusy(false)); }}>Publish</button>
           <button className="button button-small" onClick={() => { contentApi.platformVersions(page.slug).then((result) => setVersions(result.versions)).catch(() => setError("Could not load versions.")); }}>History</button>
         </div>
         {message && <p className="success">{message}</p>}
         {error && <p className="error">{error}</p>}
+        {dirty && <p className="helper">Unsaved changes — save a draft before switching pages or languages.</p>}
+        {page.drafts[selected.locale] && <p className="helper">Draft saved {new Date(page.drafts[selected.locale].savedAt).toLocaleString()} by {page.drafts[selected.locale].savedBy}. Publishing uses this draft when the editor body is unchanged.</p>}
         {versions && <div className="cms-versions">{versions.length ? versions.slice(0, 20).map((version) => <div className="timeline-item" key={version.id}><strong>{localeNames[version.locale] || version.locale} · {version.publishedBy}</strong><span>{new Date(version.createdAt).toLocaleString()}{version.note ? ` · ${version.note}` : ""}</span><button className="button button-small" onClick={() => { contentApi.restore(page.slug, version.id).then(() => { setMessage("Version restored as a new publish."); return load(); }).catch(() => setError("Could not restore.")); }}>Restore</button></div>) : <p>No versions yet.</p>}</div>}
       </div>}
     </div>
