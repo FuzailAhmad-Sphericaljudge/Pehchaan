@@ -2764,7 +2764,8 @@ const server = http.createServer(async (req, res) => {
         const at = page.locales[locale]?.publishedAt ? new Date(page.locales[locale].publishedAt).getTime() : 0;
         return lastPublishedAt - at > 60 * 1000;
       });
-      return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales };
+      const versionCount = contentVersions.filter((item) => item.slug === page.slug).length;
+      return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales, versionCount };
     });
     jsonResponse(res, 200, { pages, locales: contentLocales, localeNames: contentLocaleNames });
     return;
