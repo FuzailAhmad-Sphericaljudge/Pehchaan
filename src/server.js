@@ -2720,12 +2720,31 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && pathname.match(/^\/api\/content\/[^/]+$/)) {
     const slug = decodeURIComponent(pathname.split('/')[3]);
     const page = contentPages.get(slug);
-    if (!page) { jsonResponse(res, 404, { error: 'Page not found.' }); return; }
+    if (!page) {
+      jsonResponse(res, 404, { error: 'Page not found.', available: Array.from(contentPages.values()).filter((item) => Object.values(item.locales).some((entry) => entry?.body)).map((item) => item.slug) });
+      return;
+    }
     const locales = {};
     for (const [locale, entry] of Object.entries(page.locales)) {
       if (entry?.body) locales[locale] = { body: entry.body, publishedAt: entry.publishedAt, publishedBy: entry.publishedBy };
     }
     jsonResponse(res, 200, { slug: page.slug, kind: page.kind, title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug, locales });
+    return;
+  }
+
+  // Phase 34: public index of published pages, for discoverability (footer,
+  // 404 suggestions). Only pages with at least one published locale appear.
+  if (req.method === 'GET' && pathname === '/api/content') {
+    const pages = Array.from(contentPages.values())
+      .filter((page) => Object.values(page.locales).some((entry) => entry?.body))
+      .map((page) => ({
+        slug: page.slug,
+        kind: page.kind,
+        title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug,
+        locales: Object.entries(page.locales).filter(([, entry]) => entry?.body).map(([locale]) => locale),
+        lastPublishedAt: Object.values(page.locales).map((entry) => entry?.publishedAt).filter(Boolean).sort().pop() || null,
+      }));
+    jsonResponse(res, 200, { pages });
     return;
   }
 
