@@ -177,8 +177,9 @@ sincere repeated report must never be silently blocked.
   promo terms, very short text). Matches set a `fraudReview` flag on the case;
   the case is still created, notified, and fully actionable. NGO caseworkers
   see a red "Flagged for review" badge in the inbox and a review panel on the
-  case where they can dismiss the flag (genuine) or confirm spam. Screening
-  never closes, hides, or deprioritizes a case by itself.
+  case where they can dismiss the flag (genuine) or confirm spam. The inbox
+  also has a "Flagged" filter so pending reviews are one click away.
+  Screening never closes, hides, or deprioritizes a case by itself.
 - **Sign-up abuse limits.** On top of the Phase 8 limits: OTP requests per IP
   per day (30), new worker accounts per IP per day (8; re-verifying existing
   accounts are exempt), complaints per account per day (10) and per IP per day
