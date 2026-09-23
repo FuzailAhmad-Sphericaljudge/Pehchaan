@@ -41,6 +41,8 @@ const notificationQueue = [];
 let notificationTimer = null;
 const fraudReports = [];
 const fraudScreens = [];
+const contentPages = new Map();
+const contentVersions = [];
 
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
@@ -62,7 +64,7 @@ const maxTrustedContacts = 5;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()), fraudReports: fraudReports.slice(0, 2000) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()), fraudReports: fraudReports.slice(0, 2000), contentPages: Array.from(contentPages.values()), contentVersions: contentVersions.slice(0, 1000) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -706,6 +708,86 @@ function fraudAbuseOverview() {
   }
   return Array.from(byWorker.values())
     .sort((a, b) => (b.fraudReports + b.flaggedCases) - (a.fraudReports + a.flaggedCases));
+}
+
+// ---- Phase 34: content management for legal & static pages -----------------
+// Privacy Policy, Terms of Use, FAQ, About mission, and scheme-style content
+// live in the database so the team can update them without a code deploy.
+// Every publish stores an immutable version; legal pages keep theirs forever.
+
+const contentLocales = ['en', 'hi', 'bn', 'ta', 'te'];
+const contentLocaleNames = { en: 'English', hi: 'हिन्दी', bn: 'বাংলা', ta: 'தமிழ்', te: 'తెలుగు' };
+const contentSlugs = [
+  { slug: 'privacy-policy', kind: 'legal', title: 'Privacy Policy' },
+  { slug: 'terms-of-use', kind: 'legal', title: 'Terms of Use' },
+  { slug: 'faq', kind: 'static', title: 'FAQ' },
+  { slug: 'about-mission', kind: 'static', title: 'About — mission' },
+];
+
+function defaultContentPages() {
+  const faqEn = [
+    { q: 'What is Pehchaan?', a: 'Pehchaan helps migrant and informal workers keep their own record of wages, safety, and complaints, and connects them to trusted NGOs.' },
+    { q: 'What is a safety check-in?', a: 'A quick "I am safe" or "I need help" signal. A help signal alerts partner NGO caseworkers immediately.' },
+    { q: 'Does Pehchaan replace the police or labour department?', a: 'No. Pehchaan does not replace emergency services, police, courts, or labour departments. It organizes information so those systems and support organizations can act.' },
+    { q: 'Who can see my complaints?', a: 'Only authorized NGO caseworkers of the partner organization handling your case, and platform staff never see case content — only counts.' },
+    { q: 'How do I delete my data?', a: 'Request deletion from your profile in the worker app, or ask your NGO caseworker. You can also export everything yourself as PDF, CSV, or JSON.' },
+  ];
+  const faqHi = [
+    { q: 'पहचान क्या है?', a: 'पहचान प्रवासी और अनौपचारिक श्रमिकों को अपनी मजदूरी, सुरक्षा और शिकायतों का रिकॉर्ड रखने तथा भरोसेमंद NGO से जुड़ने में मदद करती है।' },
+    { q: 'सुरक्षा चेक-इन क्या है?', a: 'एक छोटा संकेत — "मैं सुरक्षित हूँ" या "मुझे मदद चाहिए"। मदद का संकेत तुरंत साझेदार NGO केसवर्कर्स को अलर्ट भेजता है।' },
+    { q: 'क्या पहचान पुलिस या श्रम विभाग की जगह लेती है?', a: 'नहीं। पहचान आपात सेवाओं, पुलिस, अदालतों या श्रम विभाग की जगह नहीं लेती। यह जानकारी व्यवस्थित करती है ताकि सही संस्था सही काम कर सके।' },
+    { q: 'मेरी शिकायतें कौन देख सकता है?', a: 'केवल आपका मामला संभालने वाले अधिकृत NGO केसवर्कर। प्लेटफॉरम टीम कभी केस की सामग्री नहीं देखती — केवल आंकड़े।' },
+    { q: 'अपना डेटा कैसे हटाऊँ?', a: 'वर्कर ऐप की प्रोफ़ाइल से डिलीट का अनुरोध करें, या अपने NGO केसवर्कर से कहें। आप पूरा डेटा PDF, CSV या JSON में खुद भी निर्यात कर सकते हैं।' },
+  ];
+  const mission = {
+    en: 'Pehchaan is built for migrant and informal workers who often hold several jobs at once and rarely have written records. We organize worker information and route it to trusted organizations.',
+    hi: 'पहचान प्रवासी और अनौपचारिक श्रमिकों के लिए बनी है — जो अक्सर कई काम एक साथ करते हैं और जिनका कोई लिखित रिकॉर्ड नहीं होता। हम श्रमिक की जानकारी व्यवस्थित करके भरोसेमंद संस्थाओं तक पहुंचाते हैं।',
+  };
+  return [
+    { slug: 'faq', kind: 'static', locales: { en: { body: faqEn.map((item) => `### ${item.q}\n\n${item.a}`).join('\n\n') }, hi: { body: faqHi.map((item) => `### ${item.q}\n\n${item.a}`).join('\n\n') } } },
+    { slug: 'about-mission', kind: 'static', locales: { en: { body: mission.en }, hi: { body: mission.hi } } },
+  ];
+}
+
+function newContentVersion({ slug, kind, locale, body, publishedBy, note }) {
+  return {
+    id: randomUUID(),
+    slug,
+    kind,
+    locale,
+    body,
+    publishedBy,
+    note: note || '',
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function serializeContentPage(item) {
+  return {
+    slug: item.slug,
+    kind: item.kind,
+    title: contentSlugs.find((entry) => entry.slug === item.slug)?.title || item.slug,
+    locales: item.locales,
+    updatedAt: item.updatedAt,
+    updatedBy: item.updatedBy || null,
+  };
+}
+
+function serializeContentVersion(item) {
+  return {
+    id: item.id,
+    slug: item.slug,
+    kind: item.kind,
+    locale: item.locale,
+    body: item.body,
+    publishedBy: item.publishedBy,
+    note: item.note || '',
+    createdAt: item.createdAt,
+  };
+}
+
+function contentAuditTrail(slug) {
+  return contentVersions.filter((item) => item.slug === slug).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
 function serializeApplication(item) {
@@ -2633,6 +2715,127 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Phase 34: public content — the published body of any content page, in
+  // every locale that has been published. Drafts never appear here.
+  if (req.method === 'GET' && pathname.match(/^\/api\/content\/[^/]+$/)) {
+    const slug = decodeURIComponent(pathname.split('/')[3]);
+    const page = contentPages.get(slug);
+    if (!page) { jsonResponse(res, 404, { error: 'Page not found.' }); return; }
+    const locales = {};
+    for (const [locale, entry] of Object.entries(page.locales)) {
+      if (entry?.body) locales[locale] = { body: entry.body, publishedAt: entry.publishedAt, publishedBy: entry.publishedBy };
+    }
+    jsonResponse(res, 200, { slug: page.slug, kind: page.kind, title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug, locales });
+    return;
+  }
+
+  // Phase 34: platform editing — list every page with drafts and stale-locale
+  // flags so an admin editing English is prompted to update other languages.
+  if (req.method === 'GET' && pathname === '/api/platform/content') {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const pages = Array.from(contentPages.values()).map((page) => {
+      const publishedLocales = Object.entries(page.locales).filter(([, entry]) => entry?.body).map(([locale]) => locale);
+      const lastPublishedAt = Math.max(0, ...Object.values(page.locales).map((entry) => entry?.publishedAt ? new Date(entry.publishedAt).getTime() : 0));
+      const staleLocales = publishedLocales.filter((locale) => {
+        const at = page.locales[locale]?.publishedAt ? new Date(page.locales[locale].publishedAt).getTime() : 0;
+        return lastPublishedAt - at > 60 * 1000;
+      });
+      return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales };
+    });
+    jsonResponse(res, 200, { pages, locales: contentLocales, localeNames: contentLocaleNames });
+    return;
+  }
+
+  // Phase 34: save a draft for one locale of one page. Drafts are only
+  // visible in the platform panel, never on the public site.
+  if (req.method === 'PUT' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const [, , , slug, locale] = pathname.split('/');
+    if (!contentLocales.includes(locale)) { jsonResponse(res, 400, { error: 'Unsupported locale.' }); return; }
+    const body = await parseBody(req);
+    const text = String(body.body || '');
+    if (!text.trim()) { jsonResponse(res, 400, { error: 'Body cannot be empty.' }); return; }
+    if (text.length > 200_000) { jsonResponse(res, 400, { error: 'Body is too large.' }); return; }
+    let page = contentPages.get(slug);
+    if (!page) {
+      const known = contentSlugs.find((entry) => entry.slug === slug);
+      if (!known) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
+      page = { slug, kind: known.kind, locales: {}, drafts: {}, updatedAt: null, updatedBy: null };
+      contentPages.set(slug, page);
+    }
+    page.drafts = { ...(page.drafts || {}), [locale]: { body: text, savedAt: new Date().toISOString(), savedBy: actor.sub } };
+    makeAudit('content_draft_saved', actor.sub, slug, { locale, characters: text.length });
+    persist();
+    jsonResponse(res, 200, { slug, locale, draft: page.drafts[locale] });
+    return;
+  }
+
+  // Phase 34: publish a locale — stores an immutable version row and marks
+  // the published body. Every publish is attributed in the audit log.
+  if (req.method === 'POST' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+\/publish$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const [, , , slug, locale] = pathname.split('/');
+    if (!contentLocales.includes(locale)) { jsonResponse(res, 400, { error: 'Unsupported locale.' }); return; }
+    const body = await parseBody(req);
+    const text = String(body.body || '').trim();
+    if (!text) { jsonResponse(res, 400, { error: 'Body cannot be empty.' }); return; }
+    const page = contentPages.get(slug);
+    const draft = page?.drafts?.[locale];
+    const sourceBody = text || draft?.body || '';
+    if (!sourceBody) { jsonResponse(res, 400, { error: 'Nothing to publish — save or send a body first.' }); return; }
+    if (!page) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
+    const now = new Date().toISOString();
+    page.locales[locale] = { body: sourceBody, publishedAt: now, publishedBy: actor.sub };
+    delete page.drafts[locale];
+    page.updatedAt = now;
+    page.updatedBy = actor.sub;
+    const version = newContentVersion({ slug, kind: page.kind, locale, body: sourceBody, publishedBy: actor.sub, note: String(body.note || '') });
+    contentVersions.unshift(version);
+    makeAudit('content_published', actor.sub, slug, { locale, versionId: version.id, kind: page.kind, characters: sourceBody.length });
+    persist();
+    jsonResponse(res, 200, { page: serializeContentPage(page), version: serializeContentVersion(version) });
+    return;
+  }
+
+  // Phase 34: version history. Legal pages (Privacy Policy, Terms of Use)
+  // keep every version so the team can show what the policy said on any date.
+  if (req.method === 'GET' && pathname.match(/^\/api\/platform\/content\/[^/]+\/versions$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const slug = decodeURIComponent(pathname.split('/')[4]);
+    const page = contentPages.get(slug);
+    if (!page) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
+    jsonResponse(res, 200, { slug, kind: page.kind, versions: contentAuditTrail(slug).map(serializeContentVersion) });
+    return;
+  }
+
+  // Phase 34: restore an old version — publishes its body again as a new
+  // version, so even a rollback stays visible in the history.
+  if (req.method === 'POST' && pathname.match(/^\/api\/platform\/content\/[^/]+\/restore$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    const slug = decodeURIComponent(pathname.split('/')[4]);
+    const body = await parseBody(req);
+    const version = contentVersions.find((item) => item.id === String(body.versionId || '') && item.slug === slug);
+    if (!version) { jsonResponse(res, 404, { error: 'Version not found.' }); return; }
+    const page = contentPages.get(slug);
+    if (!page) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
+    const now = new Date().toISOString();
+    page.locales[version.locale] = { body: version.body, publishedAt: now, publishedBy: actor.sub };
+    delete page.drafts[version.locale];
+    page.updatedAt = now;
+    page.updatedBy = actor.sub;
+    const restored = newContentVersion({ slug, kind: page.kind, locale: version.locale, body: version.body, publishedBy: actor.sub, note: `Restored from version ${version.id.slice(0, 8)}` });
+    contentVersions.unshift(restored);
+    makeAudit('content_restored', actor.sub, slug, { locale: version.locale, fromVersion: version.id, newVersion: restored.id });
+    persist();
+    jsonResponse(res, 200, { page: serializeContentPage(page), version: serializeContentVersion(restored) });
+    return;
+  }
+
   // Phase 33: NGO caseworkers report a complaint as fraudulent/spam with a
   // reason. This is separate from the Phase 11 safety "false alarm" handling:
   // false_alarm is for good-faith safety check-ins; fraud reports record
@@ -2936,6 +3139,11 @@ const server = http.createServer(async (req, res) => {
       'POST /api/notifications/push-subscribe',
       'POST /api/cases/:id/fraud-report',
       'GET /api/platform/fraud-reports',
+      'GET /api/content/:slug',
+      'GET|PUT /api/platform/content',
+      'POST /api/platform/content/:slug/:locale/publish',
+      'GET /api/platform/content/:slug/versions',
+      'POST /api/platform/content/:slug/restore',
       'POST /api/admin/revoke-account',
     ],
   });
@@ -2978,6 +3186,13 @@ async function start() {
     for (const row of state.pushSubscriptions || []) pushSubscriptions.set(row.id, { id: row.id, audienceRole: row.audience_role, workerId: row.worker_id, endpoint: row.endpoint, p256dh: row.p256dh, auth: row.auth, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.fraudReports || []) fraudReports.push({ id: row.id, caseId: row.case_id, workerId: row.worker_id, reason: row.reason, detail: row.detail, reportedBy: row.reported_by, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.cases) { if (row.fraud_review && Object.keys(row.fraud_review).length) { const existing = cases.find((item) => item.id === row.id); if (existing) existing.fraudReview = row.fraud_review; } }
+    for (const row of state.contentPages || []) contentPages.set(row.slug, { slug: row.slug, kind: row.kind, locales: row.locales || {}, drafts: row.drafts || {}, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null });
+    for (const row of state.contentVersions || []) contentVersions.push({ id: row.id, slug: row.slug, kind: row.kind, locale: row.locale, body: row.body, publishedBy: row.publishedBy, note: row.note || '', createdAt: row.createdAt });
+  }
+  // Phase 34: fresh installs (and fresh databases) get the current in-app
+  // text as the first published version, so public pages work immediately.
+  for (const seed of defaultContentPages()) {
+    if (!contentPages.has(seed.slug)) contentPages.set(seed.slug, { ...seed, updatedAt: null, updatedBy: null });
   }
   stateLoaded = true;
   server.listen(PORT, () => {
