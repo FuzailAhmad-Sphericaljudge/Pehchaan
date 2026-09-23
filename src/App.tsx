@@ -438,6 +438,16 @@ function JoinPilot({ lang }: { lang: Language }) {
   return <main className="page-hero"><p className="eyebrow">{t_public(lang, "join")}</p><h1>{hi ? "पायलट से जुड़ें।" : "Join the pilot."}</h1><p>{hi ? "हम उन NGO और श्रमिक समुदायों के साथ काम कर रहे हैं जो मजदूरी, सुरक्षा और बंधुआ मजदूरी के मामलों पर रिकॉर्डिंग चाहते हैं।" : "We are working with NGOs and worker communities who want organized records for wage, safety, and debt bondage cases."}</p><div className="hero-actions"><Link className="button" to="/worker/login">{hi ? "श्रमिक के रूप में शुरू करें" : "Start as a worker"} →</Link><Link className="button button-ghost" to="/ngo/login">{hi ? "संस्था लॉगिन" : "Organization login"}</Link><Link className="button button-ghost" to="/employer/interest">{hi ? "नियोक्ता साझेदारी" : "Employer partnership"}</Link></div><p className="helper">{hi ? "पायलट डेमो: OTP मोड में 123456 डालें · NGO: ngo@pehchaan.org / demo" : "Pilot demo: use OTP 123456 in demo mode · NGO: ngo@pehchaan.org / demo"}</p></main>;
 }
 
+function ContentPage({ lang, slug }: { lang: Language; slug: string }) {
+  const [page, setPage] = React.useState<import("./api").ContentPage | null>(null);
+  const [error, setError] = React.useState(false);
+  React.useEffect(() => { contentApi.page(slug).then(setPage).catch(() => setError(true)); }, [slug]);
+  const locales = page ? Object.keys(page.locales) : [];
+  const preferred = page ? (page.locales[lang] ? lang : page.locales.en ? "en" : locales[0]) : null;
+  const entry = page && preferred ? page.locales[preferred] : null;
+  return <main className="page-hero content-page"><p className="eyebrow">{page?.title || (lang === "hi" ? "जानकारी" : "Information")}</p>{error || (page && !entry) ? <div className="error-box"><p>{lang === "hi" ? "यह पेज अभी उपलब्ध नहीं है।" : "This page is not available yet."}</p></div> : !page ? <Loading lang={lang} /> : <><div className="filter-row">{locales.map((locale) => <span className={locale === preferred ? "filter active" : "filter"} key={locale}>{contentLocaleNames[locale] || locale}</span>)}</div><div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(entry.body) }} /><p className="helper">{lang === "hi" ? "यह पेज Pehchaan टीम अपडेट करती है — नवीनतम संस्करण हमेशा यहीं दिखता है।" : "This page is maintained by the Pehchaan team — the latest published version always appears here."}</p></>}</main>;
+}
+
 function PublicPage({ lang, title }: { lang: Language; title: string }) { return <main className="page-hero"><p className="eyebrow">{title}</p><h1>{lang === "hi" ? "सुरक्षित सहायता तक एक साफ रास्ता।" : "A clear path to safer support."}</h1><p>{lang === "hi" ? "यह जानकारी पेज जल्द ही और विस्तार से उपलब्ध होगा।" : "This information page will be expanded soon."}</p></main>; }
 
 const ngoText = {
@@ -669,6 +679,8 @@ function PlatformFraud() {
 type CmsPage = import("./api").PlatformContentPage;
 
 tinyMarkdown.maybeHeading = undefined;
+const contentLocaleNames: Record<string, string> = { en: "English", hi: "हिन्दी", bn: "বাংলা", ta: "தமிழ்", te: "తెలుగు" };
+
 function tinyMarkdown(text: string): string {
   const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const lines = String(text || "").split(/\n/);
