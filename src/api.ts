@@ -223,6 +223,8 @@ export const contentApi = {
   publish: (slug: string, locale: string, body: string, note = "") => request<{ page: PlatformContentPage; version: ContentVersion; staleLocales?: string[] }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/publish`, json({ body, note })),
   platformVersions: (slug: string) => request<{ slug: string; kind: ContentPage["kind"]; versions: ContentVersion[] }>(`/api/platform/content/${encodeURIComponent(slug)}/versions`),
   restore: (slug: string, versionId: string) => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/restore`, json({ versionId })),
+
+  discardDraft: (slug: string, locale: string) => request<{ slug: string; locale: string }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/draft`, { method: "DELETE" }),
 };
 
 export const platformApi = {
