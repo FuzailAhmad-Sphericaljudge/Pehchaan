@@ -2426,6 +2426,8 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      const previousStatus = targetCase.status;
+      const previousOwner = targetCase.owner;
       targetCase.status = body.status || targetCase.status;
       targetCase.owner = body.owner || targetCase.owner;
       targetCase.priority = body.priority || targetCase.priority;
@@ -2434,6 +2436,14 @@ const server = http.createServer(async (req, res) => {
         makeAudit(body.aiDecision === 'accept' ? 'ai_triage_accepted' : 'ai_triage_overridden', actor.sub, caseId, { aiTriage: targetCase.aiTriage });
       }
       targetCase.updatedAt = new Date().toISOString();
+      if (targetCase.owner && targetCase.owner !== previousOwner) {
+        notifyNgoCaseworkers({ caseId, type: 'case_assigned', title: 'Case assigned', body: `${caseId} was assigned to ${targetCase.owner}.`, meta: { owner: targetCase.owner } });
+      }
+      if (previousStatus === 'resolved' && targetCase.status !== 'resolved') {
+        createNotification({ workerId: targetCase.workerId, caseId, type: 'case_reopened', title: 'Your case was re-opened', body: `Case ${caseId} is ${targetCase.status} again. Your caseworker will follow up.`, meta: { status: targetCase.status } });
+      } else if (previousStatus !== targetCase.status) {
+        createNotification({ workerId: targetCase.workerId, caseId, type: 'case_status_changed', title: 'Your case status changed', body: `Case ${caseId} is now “${targetCase.status}”.`, meta: { status: targetCase.status, previousStatus } });
+      }
       makeAudit('case_updated', actor.sub, caseId, { changes: body });
 
       jsonResponse(res, 200, { case: targetCase });
