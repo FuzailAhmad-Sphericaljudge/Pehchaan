@@ -2977,7 +2977,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'PUT' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+$/)) {
     const actor = authenticate(req, res, ['platform_admin']);
     if (!actor) return;
-    const [, , , slug, locale] = pathname.split('/');
+    // Path is /api/platform/content/:slug/:locale — indices 4 and 5.
+    const [, , , , slug, locale] = pathname.split('/');
     if (!contentLocales.includes(locale)) { jsonResponse(res, 400, { error: 'Unsupported locale.' }); return; }
     const body = await parseBody(req);
     const text = String(body.body || '');
@@ -3002,7 +3003,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+\/publish$/)) {
     const actor = authenticate(req, res, ['platform_admin']);
     if (!actor) return;
-    const [, , , slug, locale] = pathname.split('/');
+    // Path is /api/platform/content/:slug/:locale/publish — indices 4 and 5.
+    const [, , , , slug, locale] = pathname.split('/');
     if (!contentLocales.includes(locale)) { jsonResponse(res, 400, { error: 'Unsupported locale.' }); return; }
     const body = await parseBody(req);
     const text = String(body.body || '').trim();
