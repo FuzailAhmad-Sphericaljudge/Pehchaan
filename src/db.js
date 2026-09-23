@@ -44,8 +44,9 @@ export async function loadState() {
     query('SELECT * FROM fraud_reports ORDER BY created_at DESC'),
     query('SELECT * FROM content_pages'),
     query('SELECT * FROM content_versions ORDER BY created_at DESC LIMIT 1000'),
+    query('SELECT * FROM legal_reviews'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows, fraudReports: fraudReports.rows, contentPages: contentPages.rows, contentVersions: contentVersions.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows, fraudReports: fraudReports.rows, contentPages: contentPages.rows, contentVersions: contentVersions.rows, legalReviews: legalReviews.rows };
 }
 
 export async function saveState(state) {
@@ -193,6 +194,12 @@ export async function saveState(state) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (id) DO NOTHING`,
         [item.id, item.slug, item.kind || 'static', item.locale, item.body, item.publishedBy, item.note || '', item.createdAt]);
+    }
+    for (const [slug, item] of state.legalReviews || []) {
+      await client.query(`INSERT INTO legal_reviews (slug, reviewed_by, reviewed_at, version)
+        VALUES ($1,$2,$3,$4)
+        ON CONFLICT (slug) DO UPDATE SET reviewed_by=$2, reviewed_at=$3, version=$4`,
+        [slug, item.reviewedBy, item.reviewedAt, item.version]);
     }
     await client.query('COMMIT');
   } catch (error) {
