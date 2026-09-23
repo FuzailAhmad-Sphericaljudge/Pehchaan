@@ -64,6 +64,156 @@ function persist() {
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
+// ---- Phase 32: Notifications Center ---------------------------------------
+// A general, best-effort notification system that is deliberately separate
+// from (and lower priority than) the Phase 11 safety-escalation channel.
+// Safety alerts never enter this queue: createSafetyAlert keeps its own direct
+// path, so routine notification processing can never delay an escalation.
+
+const notificationTypes = ['case_status_changed', 'case_note_added', 'wage_flagged', 'scheme_matched', 'case_assigned', 'case_reopened', 'alert_escalated'];
+
+function defaultNotificationPreferences() {
+  return { caseUpdates: true, caseNotes: true, wageFlags: true, schemeMatches: true };
+}
+
+function notificationPreferencesFor(workerId) {
+  if (!notificationPreferences.has(workerId)) notificationPreferences.set(workerId, defaultNotificationPreferences());
+  return notificationPreferences.get(workerId);
+}
+
+function serializeNotification(item) {
+  return {
+    id: item.id,
+    caseId: item.caseId || null,
+    type: item.type,
+    priority: item.priority,
+    title: item.title,
+    body: item.body,
+    meta: item.meta || {},
+    readAt: item.readAt || null,
+    createdAt: item.createdAt,
+  };
+}
+
+// Records one notification. Returns null when the worker opted out of the
+// non-urgent type. Urgent (safety) events bypass preferences and this queue.
+function createNotification({ audienceRole = 'worker', workerId = null, caseId = null, type, title, body, meta = {}, urgent = false }) {
+  if (!notificationTypes.includes(type)) return null;
+  if (audienceRole === 'worker' && workerId) {
+    const prefs = notificationPreferencesFor(workerId);
+    const allowed = {
+      case_status_changed: prefs.caseUpdates,
+      case_note_added: prefs.caseNotes,
+      wage_flagged: prefs.wageFlags,
+      scheme_matched: prefs.schemeMatches,
+      case_assigned: true,
+      case_reopened: true,
+      alert_escalated: true,
+    };
+    if (!allowed[type]) return null;
+  }
+  const notification = {
+    id: randomUUID(),
+    audienceRole,
+    workerId,
+    caseId,
+    type,
+    priority: urgent ? 'high' : 'normal',
+    title,
+    body,
+    meta,
+    readAt: null,
+    deliveredPushAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  notifications.unshift(notification);
+  if (notifications.length > 5000) notifications.length = 5000;
+  notificationQueue.push(notification.id);
+  scheduleNotificationFlush();
+  persist();
+  return notification;
+}
+
+function scheduleNotificationFlush() {
+  if (notificationTimer) return;
+  notificationTimer = setTimeout(() => {
+    notificationTimer = null;
+    flushNotificationQueue().catch((error) => console.error('Notification flush failed:', error.message));
+  }, 5 * 1000);
+}
+
+async function flushNotificationQueue() {
+  const batch = notificationQueue.splice(0, notificationQueue.length);
+  if (!batch.length) return;
+  for (const id of batch) {
+    const notification = notifications.find((item) => item.id === id);
+    if (!notification || notification.deliveredPushAt) continue;
+    try {
+      const sent = await sendWebPush(notification.audienceRole, notification.workerId, {
+        id: notification.id,
+        type: notification.type,
+        priority: notification.priority,
+        title: notification.title,
+        body: notification.body,
+        caseId: notification.caseId,
+      });
+      if (sent > 0) {
+        notification.deliveredPushAt = new Date().toISOString();
+        persist();
+      }
+    } catch (error) {
+      console.error('Push delivery failed:', error.message);
+    }
+  }
+}
+
+function pushSubscriptionAudience(audienceRole, workerId) {
+  return Array.from(pushSubscriptions.values())
+    .filter((item) => item.audienceRole === audienceRole && (audienceRole === 'ngo' || item.workerId === workerId));
+}
+
+// Web-push sender. Web Push requires VAPID-signed requests; the built-in fetch
+// cannot sign them, so without a provider configured this records the intent
+// (delivered_push_at stays null) and the in-app center remains the channel.
+// Set PUSH_PROVIDER=vapid + the VAPID keys to enable real browser delivery.
+async function sendWebPush(audienceRole, workerId, payload) {
+  const subscriptions = pushSubscriptionAudience(audienceRole, workerId);
+  if (!subscriptions.length) return 0;
+  if (process.env.PUSH_PROVIDER !== 'vapid' || !process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY || !process.env.VAPID_SUBJECT) {
+    return 0;
+  }
+  return sendVapidPush(subscriptions, payload);
+}
+
+async function sendVapidPush(subscriptions, payload) {
+  let sent = 0;
+  for (const subscription of subscriptions) {
+    try {
+      const response = await fetch(process.env.PUSH_API_URL || 'http://localhost:9090/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          payload,
+          vapid: { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY, subject: process.env.VAPID_SUBJECT },
+        }),
+      });
+      if (response.status === 404 || response.status === 410) {
+        pushSubscriptions.delete(subscription.id);
+        persist();
+        continue;
+      }
+      if (response.ok) {
+        sent += 1;
+      }
+    } catch {
+      // Provider unreachable: leave delivered_push_at null so the flush loop retries later.
+    }
+  }
+  return sent;
+}
+
 function makeAudit(action, actor, target, details = {}) {
   const entry = {
     id: randomUUID(),
