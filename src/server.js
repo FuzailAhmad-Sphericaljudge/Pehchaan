@@ -949,6 +949,9 @@ function escalateDueAlerts() {
     if (alert.status === 'pending' && !alert.escalatedAt && Date.parse(alert.dueAt) <= now) {
       alert.status = 'escalated';
       alert.escalatedAt = new Date().toISOString();
+      // Link, don't duplicate: this notification points at the Phase 11 alert;
+      // the alert itself keeps its own escalation record and ack workflow.
+      notifyNgoCaseworkers({ caseId: alert.caseId, type: 'alert_escalated', title: 'Safety alert needs acknowledgement', body: `Alert ${alert.id} escalated past its ${Math.round((alertAckWindowMs || 15 * 60 * 1000) / 60000)}-minute window. Open the alert inbox to acknowledge.`, meta: { alertId: alert.id, kind: alert.kind } });
       makeAudit('alert_escalated', 'system', alert.caseId || alert.id, { alertId: alert.id, notified: 'ngo_admin' });
     }
   }
