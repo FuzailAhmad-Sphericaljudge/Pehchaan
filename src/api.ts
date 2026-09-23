@@ -214,6 +214,7 @@ export type PlatformContentPage = { slug: string; kind: "legal" | "static"; titl
 export type ContentVersion = { id: string; slug: string; kind: "legal" | "static"; locale: string; body: string; publishedBy: string; note: string; createdAt: string };
 
 export const contentApi = {
+  index: () => request<{ pages: { slug: string; kind: "legal" | "static"; title: string; locales: string[]; lastPublishedAt: string | null }[] }>("/api/content"),
   page: (slug: string) => request<ContentPage>(`/api/content/${encodeURIComponent(slug)}`),
   list: () => request<{ pages: PlatformContentPage[]; locales: string[]; localeNames: Record<string, string> }>("/api/platform/content"),
   saveDraft: (slug: string, locale: string, body: string) => request<{ slug: string; locale: string; draft: ContentDraft }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}`, { ...json({ body }), method: "PUT" }),
