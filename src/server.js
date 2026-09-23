@@ -1320,11 +1320,18 @@ const server = http.createServer(async (req, res) => {
         jsonResponse(res, 429, { error: 'Too many OTP requests. Please wait and try again.' });
         return;
       }
+      // Phase 33: bulk sign-up abuse limits — OTP farming means many requests
+      // across many numbers from one network. hitRateLimit records the hit
+      // whether or not the request later succeeds.
+      if (!hitRateLimit(`otp-request-ip:${clientIp(req)}`, 30, 24 * 60 * 60 * 1000)) {
+        jsonResponse(res, 429, { error: 'Too many verification requests from this network today. Please try again tomorrow or contact support.' });
+        return;
+      }
       const worker = ensureWorker(phone);
       const otp = allowDemoOtp ? '123456' : String(randomInt(100000, 1000000));
       await sendOtp(phone, otp);
       otpChallenges.set(phone, { otpHash: hash(otp), workerId: worker.id, expiresAt: Date.now() + otpTtlMs, attempts: 0 });
-      makeAudit('otp_requested', 'system', worker.id, { phone, otpSent: true, demo: allowDemoOtp });
+      makeAudit('otp_requested', 'system', worker.id, { phone, otpSent: true, demo: allowDemoOtp, ip: clientIp(req) });
 
       jsonResponse(res, 200, {
         message: 'OTP sent.',
