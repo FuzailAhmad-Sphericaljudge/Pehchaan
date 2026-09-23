@@ -267,3 +267,7 @@ FAQ, About mission text, and the welfare-scheme descriptions. Key properties:
   rendered at `/privacy-policy`, `/terms-of-use`, and `/faq` (the FAQ index
   also lists the other pages and links them from the site footer). Visitors
   can switch between published languages on the page itself.
+- **No orphan languages.** Republishing an identical body is rejected as a
+  no-op so version history stays meaningful, and scheme descriptions fall
+  back to the default text when a translation is blank instead of showing an
+  empty section to the worker.
