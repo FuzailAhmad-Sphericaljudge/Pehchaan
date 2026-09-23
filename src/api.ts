@@ -210,7 +210,7 @@ export type PlatformSummary = { generatedAt: string; organizations: { total: num
 export type ContentPageEntry = { body: string; publishedAt: string; publishedBy: string };
 export type ContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry> };
 export type ContentDraft = { body: string; savedAt: string; savedBy: string };
-export type PlatformContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry>; drafts: Record<string, ContentDraft>; staleLocales: string[]; publishedLocales: string[]; updatedAt: string | null; updatedBy: string | null };
+export type PlatformContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry>; drafts: Record<string, ContentDraft>; staleLocales: string[]; publishedLocales: string[]; versionCount: number; updatedAt: string | null; updatedBy: string | null };
 export type ContentVersion = { id: string; slug: string; kind: "legal" | "static"; locale: string; body: string; publishedBy: string; note: string; createdAt: string };
 
 export const contentApi = {
