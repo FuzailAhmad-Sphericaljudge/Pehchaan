@@ -2780,7 +2780,7 @@ const server = http.createServer(async (req, res) => {
     const actor = authenticate(req, res, ['ngo_caseworker', 'ngo_admin']);
     if (!actor) return;
     try {
-      const caseId = pathname.split('/')[3];
+      const caseId = pathname.split('/')[4];
       const body = await parseBody(req);
       const targetCase = findCase(caseId);
       if (!targetCase) {
@@ -2790,6 +2790,23 @@ const server = http.createServer(async (req, res) => {
 
       const previousStatus = targetCase.status;
       const previousOwner = targetCase.owner;
+      // Phase 33: caseworker disposition of a fraud flag. A case is never
+      // auto-closed by screening; only a human closes or dismisses it here.
+      if (body.fraudDisposition === 'dismissed' || body.fraudDisposition === 'confirmed') {
+        targetCase.fraudReview = {
+          ...(targetCase.fraudReview || { flagged: false, signals: [], screenedAt: null, screenedBy: null }),
+          disposition: body.fraudDisposition,
+          reviewedBy: actor.sub,
+          reviewedAt: new Date().toISOString(),
+        };
+        for (const report of fraudReports) {
+          if (report.caseId === caseId && !report.reviewedAt) {
+            report.reviewedBy = actor.sub;
+            report.reviewedAt = targetCase.fraudReview.reviewedAt;
+          }
+        }
+        makeAudit(body.fraudDisposition === 'dismissed' ? 'case_fraud_flag_dismissed' : 'case_fraud_confirmed', actor.sub, caseId, { signals: targetCase.fraudReview.signals || [] });
+      }
       targetCase.status = body.status || targetCase.status;
       targetCase.owner = body.owner || targetCase.owner;
       targetCase.priority = body.priority || targetCase.priority;
