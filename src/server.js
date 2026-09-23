@@ -3428,6 +3428,7 @@ const server = http.createServer(async (req, res) => {
       'GET /api/content/:slug',
       'GET /api/content/:slug/versions',
       'GET /api/content/:slug/version/:versionId',
+      'GET /api/content',
       'GET|PUT /api/platform/content',
       'POST /api/platform/content/:slug/:locale/publish',
       'DELETE /api/platform/content/:slug/:locale/draft',
