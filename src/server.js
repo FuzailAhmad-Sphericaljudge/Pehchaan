@@ -2390,6 +2390,8 @@ const server = http.createServer(async (req, res) => {
         createdAt: new Date().toISOString(),
       };
       caseNotes.push(note);
+      const noteCase = findCase(caseId);
+      createNotification({ workerId: noteCase?.workerId || null, caseId, type: 'case_note_added', title: 'Your caseworker added a note', body: note.text.slice(0, 160), meta: { noteId: note.id, author: note.author } });
       makeAudit('case_note_created', note.author, caseId, { noteId: note.id });
       jsonResponse(res, 201, { note });
       return;
