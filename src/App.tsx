@@ -786,6 +786,9 @@ function PlatformReference() {
   const [changes, setChanges] = React.useState<import("./api").CaseDetail["auditLog"]>([]);
   const [wageForm, setWageForm] = React.useState({ state: "", workerCategory: "unskilled_construction", dailyAmount: "", effectiveFrom: new Date().toISOString().slice(0, 10), sourceNote: "" });
   const [schemeForm, setSchemeForm] = React.useState({ slug: "", name: "", description: "", eligibility: "", registrationInstructions: "", officialUrl: "", minAge: "", maxAge: "", states: "All India", workerCategories: "" });
+  // Phase 34: per-locale scheme text overrides, mirroring the CMS shape.
+  const [schemeLocale, setSchemeLocale] = React.useState("base");
+  const [schemeOverrides, setSchemeOverrides] = React.useState<Record<string, Partial<Record<"name" | "description" | "eligibility" | "registrationInstructions", string>>>>({});
   const [message, setMessage] = React.useState(""); const [error, setError] = React.useState("");
   const load = React.useCallback(async () => {
     try {
@@ -802,7 +805,15 @@ function PlatformReference() {
   };
   const saveScheme = async (event: React.FormEvent) => {
     event.preventDefault(); setMessage(""); setError("");
-    try { await platformApi.upsertScheme({ ...schemeForm, minAge: schemeForm.minAge || null, maxAge: schemeForm.maxAge || null, states: schemeForm.states.split(",").map((item) => item.trim()).filter(Boolean), workerCategories: schemeForm.workerCategories.split(",").map((item) => item.trim()).filter(Boolean) }); setMessage("Scheme saved and audited."); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save the scheme."); }
+    try {
+      await platformApi.upsertScheme({ ...schemeForm, minAge: schemeForm.minAge || null, maxAge: schemeForm.maxAge || null, states: schemeForm.states.split(",").map((item) => item.trim()).filter(Boolean), workerCategories: schemeForm.workerCategories.split(",").map((item) => item.trim()).filter(Boolean), languages: schemeOverrides });
+      setMessage("Scheme saved and audited."); await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save the scheme."); }
+  };
+  const editScheme = (scheme: import("./api").WelfareScheme) => {
+    setSchemeForm({ slug: scheme.slug, name: scheme.name, description: scheme.description, eligibility: scheme.eligibility, registrationInstructions: scheme.registrationInstructions, officialUrl: scheme.officialUrl || "", minAge: scheme.minAge == null ? "" : String(scheme.minAge), maxAge: scheme.maxAge == null ? "" : String(scheme.maxAge), states: (scheme.states || ["All India"]).join(", "), workerCategories: (scheme.workerCategories || []).join(", ") });
+    setSchemeOverrides((scheme.languages || {}) as typeof schemeOverrides);
+    setSchemeLocale("base");
   };
   return <>
     <h1>Global reference data</h1>
@@ -821,11 +832,18 @@ function PlatformReference() {
       </form>
       <div className="list-panel">{rates.map((rate) => <div className="list-row" key={rate.id}><strong>{rate.state} · {rate.workerCategory}</strong><span>₹{rate.dailyAmount}/day · effective {rate.effectiveFrom} · updated {new Date(rate.updatedAt).toLocaleDateString()}</span></div>)}{!rates.length && <p>No reference rates yet.</p>}</div>
     </> : <>
+      <div className="filter-row"><button className={schemeLocale === "base" ? "filter active" : "filter"} onClick={() => setSchemeLocale("base")}>Base (English)</button>{Object.keys(schemeOverrides).map((locale) => <button className={schemeLocale === locale ? "filter active" : "filter"} onClick={() => setSchemeLocale(locale)} key={locale}>{locale}{!["en", "hi", "bn", "ta", "te"].includes(locale) ? " ⚠" : ""}</button>)}<button className="filter" onClick={() => { const locale = prompt("Locale code to add (en, hi, bn, ta, te):"); if (locale && ["en", "hi", "bn", "ta", "te"].includes(locale)) { setSchemeOverrides({ ...schemeOverrides, [locale]: {} }); setSchemeLocale(locale); } }}>+ Add language</button></div>
+      {schemeLocale === "base" ? <>
       <form className="worker-form" onSubmit={saveScheme}>
         {(["slug", "name", "description", "eligibility", "registrationInstructions", "officialUrl", "minAge", "maxAge", "states", "workerCategories"] as const).map((field) => <label key={field}>{field}<input required={["slug", "name", "description", "eligibility", "registrationInstructions"].includes(field)} value={schemeForm[field]} onChange={(event) => setSchemeForm({ ...schemeForm, [field]: event.target.value })} /></label>)}
         <button className="button">Save scheme</button>
       </form>
-      <div className="list-panel">{schemes.map((scheme) => <div className="list-row" key={scheme.id}><strong>{scheme.name} <small>· {scheme.slug}</small></strong><span>{scheme.active === false ? "Inactive" : "Active"} · {(scheme.states || ["—"]).join(", ")} · updated {scheme.updatedAt ? new Date(scheme.updatedAt).toLocaleDateString() : "—"}</span></div>)}{!schemes.length && <p>No schemes yet.</p>}</div>
+      </>
+      : <form className="worker-form">
+        {(["name", "description", "eligibility", "registrationInstructions"] as const).map((field) => <label key={field}>{field} ({schemeLocale})<textarea value={schemeOverrides[schemeLocale]?.[field] || ""} onChange={(event) => setSchemeOverrides({ ...schemeOverrides, [schemeLocale]: { ...schemeOverrides[schemeLocale], [field]: event.target.value } })} placeholder={`Leave empty to fall back to the base English text (${field})`} /></label>)}
+        <p className="helper">Saved together with the base scheme on “Save scheme”. Empty fields fall back to English for workers in this language.</p>
+      </form>}
+      <div className="list-panel">{schemes.map((scheme) => <div className="list-row" key={scheme.id}><strong>{scheme.name} <small>· {scheme.slug}</small></strong><span>{scheme.active === false ? "Inactive" : "Active"} · {(scheme.states || ["—"]).join(", ")} · {Object.keys(scheme.languages || {}).length} languages · updated {scheme.updatedAt ? new Date(scheme.updatedAt).toLocaleDateString() : "—"} <button className="button button-small" onClick={() => editScheme(scheme)}>Edit</button></span></div>)}{!schemes.length && <p>No schemes yet.</p>}</div>
     </>}
     <div className="list-panel"><h2>Recent reference changes</h2>
       {changes.length ? changes.map((entry) => <div className="timeline-item" key={entry.id}><strong>{entry.action}</strong><span>{entry.actor} · {new Date(entry.timestamp).toLocaleString()}</span>{entry.details && <p>{[entry.details.state, entry.details.workerCategory, entry.details.dailyAmount ? `₹${entry.details.dailyAmount}` : "", entry.details.slug].filter(Boolean).join(" · ")}</p>}</div>) : <p>No reference changes recorded yet.</p>}
