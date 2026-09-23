@@ -135,7 +135,7 @@ export const authApi = {
 
 export type EmployerRecord = { id: string; period: string; promisedAmount: number; paidAmount: number; status: string; discrepancyResponse?: string | null };
 export const employerApi = {
-  dashboard: () => request<{ records: EmployerRecord[]; compliance: { flagged: number; responded: number; responseRate: number } }>("/api/employer/dashboard"),
+  dashboard: () => request<{ records: EmployerRecord[]; compliance: { flagged: number; responded: number; responseRate: number; badge: string } }>("/api/employer/dashboard"),
   respond: (id: string, response: string) => request<{ record: EmployerRecord }>(`/api/employer/wage-records/${encodeURIComponent(id)}`, { ...json({ response }), method: "PATCH" }),
   interest: (body: Record<string, unknown>) => request<{ submitted: boolean }>("/api/employer/interest", json(body)),
   createWorksite: (name: string) => request<{ worksite: { id: string; name: string; registrationCode: string; verified: boolean }; qrPayload: string; qrDataUrl: string }>("/api/employer/worksites", json({ name })),
@@ -218,6 +218,19 @@ export const platformApi = {
   audit: (limit = 200) => request<{ entries: CaseDetail["auditLog"]; total: number }>(`/api/platform/audit-log?limit=${limit}`),
   signup: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/signup", json(body)),
   requestRecovery: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/recovery", json(body)),
+};
+
+export type AppNotification = { id: string; caseId: string | null; type: "case_status_changed" | "case_note_added" | "wage_flagged" | "scheme_matched" | "case_assigned" | "case_reopened" | "alert_escalated"; priority: "normal" | "high"; title: string; body: string; meta: Record<string, unknown>; readAt: string | null; createdAt: string };
+export type NotificationPreferences = { caseUpdates: boolean; caseNotes: boolean; wageFlags: boolean; schemeMatches: boolean };
+
+export const notificationApi = {
+  vapidPublicKey: () => request<{ publicKey: string | null }>("/api/notifications/vapid-public-key"),
+  list: () => request<{ notifications: AppNotification[]; unread: number; total: number }>("/api/notifications"),
+  markRead: (ids?: string[]) => request<{ updated: number; unread: number }>("/api/notifications/read", json(ids ? { ids } : {})),
+  preferences: () => request<{ preferences: NotificationPreferences }>("/api/notifications/preferences"),
+  updatePreferences: (body: Partial<NotificationPreferences>) => request<{ preferences: NotificationPreferences }>("/api/notifications/preferences", { ...json(body), method: "PATCH" }),
+  pushSubscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) => request<{ subscribed: boolean; delivery: string }>("/api/notifications/push-subscribe", json(subscription)),
+  pushUnsubscribe: (endpoint: string) => request<{ subscribed: boolean }>("/api/notifications/push-unsubscribe", json({ endpoint })),
 };
 
 export const ngoApi = {
