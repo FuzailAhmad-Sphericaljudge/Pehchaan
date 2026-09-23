@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { ApiError, authApi, CaseDetail, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, notificationApi, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
+import { ApiError, authApi, CaseDetail, contentApi, Dashboard, downloadWorkerData, employerApi, evidenceApi, Language, legalDocumentApi, minimumWageApi, ngoApi, NgoCase, notificationApi, platformApi, schemeApi, TrustedContact, trustedContactApi, WorkRelationship, workerApi, workRelationshipApi } from "./api";
 import { addOfflineItem, listOfflineItems, OfflineItem, removeOfflineItem, updateOfflineItem } from "./offline";
 import { disablePush, enablePush, pushSupported } from "./push";
 
@@ -662,6 +662,86 @@ function PlatformFraud() {
           {report.detail && <p>{report.detail}</p>}
         </div>
       )) : <p>No caseworker fraud reports yet.</p>}
+    </div>
+  </>;
+}
+
+type CmsPage = import("./api").PlatformContentPage;
+
+tinyMarkdown.maybeHeading = undefined;
+function tinyMarkdown(text: string): string {
+  const escape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = String(text || "").split(/\n/);
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => { if (inList) { out.push("</ul>"); inList = false; } };
+  for (const raw of lines) {
+    const line = escape(raw);
+    const heading = line.match(/^(#{1,4})\s+(.*)$/);
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    if (heading) { closeList(); out.push(`<h${heading[1].length + 2}>${heading[2]}</h${heading[1].length + 2}>`); }
+    else if (bullet) { if (!inList) { out.push("<ul>"); inList = true; } out.push(`<li>${bullet[1]}</li>`); }
+    else if (!line.trim()) closeList();
+    else { closeList(); out.push(`<p>${line}</p>`); }
+  }
+  closeList();
+  return out.join("");
+}
+
+function PlatformContentEditor() {
+  const [pages, setPages] = React.useState<CmsPage[]>([]);
+  const [locales, setLocales] = React.useState<string[]>([]);
+  const [localeNames, setLocaleNames] = React.useState<Record<string, string>>({});
+  const [selected, setSelected] = React.useState<{ slug: string; locale: string } | null>(null);
+  const [body, setBody] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [message, setMessage] = React.useState("");
+  const [error, setError] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [preview, setPreview] = React.useState(false);
+  const [versions, setVersions] = React.useState<import("./api").ContentVersion[] | null>(null);
+  const load = React.useCallback(async () => {
+    try {
+      const result = await contentApi.list();
+      setPages(result.pages); setLocales(result.locales); setLocaleNames(result.localeNames);
+      if (result.pages.length && !selected) setSelected({ slug: result.pages[0].slug, locale: result.pages[0].publishedLocales[0] || result.locales[0] });
+    } catch { setError("Could not load content pages."); }
+  }, [selected]);
+  React.useEffect(() => { void load(); }, []);
+  const page = pages.find((item) => item.slug === selected?.slug) || null;
+  React.useEffect(() => {
+    if (!page || !selected) return;
+    const draft = page.drafts[selected.locale];
+    setBody(draft?.body || page.locales[selected.locale]?.body || "");
+    setNote(""); setPreview(false); setVersions(null); setMessage(""); setError("");
+  }, [selected?.slug, selected?.locale]);
+  if (error && !pages.length) return <div className="error-box"><p>{error}</p></div>;
+  if (!locales.length) return <Loading lang="en" />;
+  return <>
+    <h1>Content &amp; legal pages</h1>
+    <p className="helper">Edit the text-heavy pages — Privacy Policy, Terms of Use, FAQ, mission text — without a code deploy. Every publish stores a version; legal pages keep their full history. Languages that have not been updated since the most recent publish are marked stale.</p>
+    <div className="detail-grid cms-grid">
+      <div className="list-panel cms-list">
+        {pages.map((item) => <button className={item.slug === selected?.slug ? "filter active" : "filter"} onClick={() => setSelected({ slug: item.slug, locale: item.publishedLocales[0] || locales[0] })} key={item.slug}>{item.title}{item.kind === "legal" ? " ⚖" : ""}{item.staleLocales.length ? <small> · {item.staleLocales.length} stale</small> : ""}</button>)}
+      </div>
+      {page && selected && <div className="list-panel cms-editor">
+        <h2>{page.title}</h2>
+        <div className="filter-row">{locales.map((locale) => <button className={locale === selected.locale ? "filter active" : "filter"} onClick={() => setSelected({ ...selected, locale })} key={locale}>{localeNames[locale] || locale}{page.staleLocales.includes(locale) ? " ⚠" : ""}{page.drafts[locale] ? " ✎" : ""}</button>)}</div>
+        {page.staleLocales.includes(selected.locale) && <p className="helper">⚠ This language has not been updated since the latest publish. Please update it so no language is left behind.</p>}
+        {preview
+          ? <div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(body) }} />
+          : <textarea className="cms-textarea" value={body} onChange={(event) => setBody(event.target.value)} rows={16} aria-label={`Body for ${page.title} (${localeNames[selected.locale] || selected.locale})`} />}
+        <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Change note (optional, saved with the version)" aria-label="Change note" />
+        <div className="ai-actions">
+          <button className="button button-small" disabled={busy} onClick={() => { setBusy(true); contentApi.saveDraft(page.slug, selected.locale, body).then(() => { setMessage("Draft saved."); setError(""); }).catch(() => { setError("Could not save the draft."); }).finally(() => setBusy(false)); }}>Save draft</button>
+          <button className="button button-small" onClick={() => setPreview((value) => !value)}>{preview ? "Edit" : "Preview"}</button>
+          <button className="button button-small" disabled={busy || !body.trim()} onClick={() => { setBusy(true); contentApi.publish(page.slug, selected.locale, body, note).then(() => { setMessage("Published. Remember to update the other languages."); setError(""); return load(); }).catch(() => { setError("Could not publish."); }).finally(() => setBusy(false)); }}>Publish</button>
+          <button className="button button-small" onClick={() => { contentApi.versions(page.slug).then((result) => setVersions(result.versions)).catch(() => setError("Could not load versions.")); }}>History</button>
+        </div>
+        {message && <p className="success">{message}</p>}
+        {error && <p className="error">{error}</p>}
+        {versions && <div className="cms-versions">{versions.length ? versions.slice(0, 20).map((version) => <div className="timeline-item" key={version.id}><strong>{localeNames[version.locale] || version.locale} · {version.publishedBy}</strong><span>{new Date(version.createdAt).toLocaleString()}{version.note ? ` · ${version.note}` : ""}</span><button className="button button-small" onClick={() => { contentApi.restore(page.slug, version.id).then(() => { setMessage("Version restored as a new publish."); return load(); }).catch(() => setError("Could not restore.")); }}>Restore</button></div>) : <p>No versions yet.</p>}</div>}
+      </div>}
     </div>
   </>;
 }
