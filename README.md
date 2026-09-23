@@ -246,3 +246,19 @@ download URLs, accepts only JPG/PNG/PDF files up to 10MB, and limits each case
 to ten files. Upload completion requires a SHA-256 checksum. Configure
 `CLAMAV_URL` with the malware-scanning service endpoint; files remain
 unavailable until the scanner returns `clean`.
+
+## Content management (Phase 34)
+
+Text-heavy, frequently-updated content is database-backed and editable from
+the platform panel without a code deploy: the Privacy Policy, Terms of Use,
+FAQ, About mission text, and the welfare-scheme descriptions. Key properties:
+
+- **Versions and rollback.** Every publish saves a version (author, timestamp,
+  locale). Legal documents (Privacy Policy, Terms of Use) keep a permanent
+  version history so the team can show what the policy said on any given
+  date; the current version is what `/api/legal-pages/:slug` serves.
+- **Translation-aware editing.** Each page holds per-locale bodies. The
+  editor lists every supported locale and flags stale translations, so an
+  English edit never silently leaves other languages out of date.
+- **Draft before live.** Edits are held as a draft with a preview until the
+  admin publishes; the public site always renders the last published body.
