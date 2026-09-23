@@ -30,3 +30,12 @@
 .fraud-review-card{background:#fdf3f2;border-color:#efc4bf}
 .fraud-review-card small{color:#7a4a44;display:block;margin-top:4px}
 .fraud-review-card .ai-actions input{padding:10px;border:1px solid #dcb3ad;border-radius:8px;font:inherit}
+.cms-grid{grid-template-columns:260px 1fr}
+.cms-list{display:flex;flex-direction:column;gap:8px}
+.cms-list .filter{text-align:left}
+.cms-textarea{width:100%;min-height:260px;padding:12px;border:1px solid #cfe0da;border-radius:10px;font:inherit;resize:vertical}
+.cms-preview{background:#f6faf8;border:1px solid #e2ece8;border-radius:10px;padding:14px}
+.cms-preview h3,.cms-preview h4,.cms-preview h5,.cms-preview h6{color:#0d4054;margin:12px 0 4px}
+.cms-versions{margin-top:10px;display:grid;gap:8px}
+.cms-versions .timeline-item{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#f6faf8;border:1px solid #e2ece8;border-radius:10px;padding:8px 10px}
+.cms-versions .timeline-item span{color:#48616a;font-size:13px}
