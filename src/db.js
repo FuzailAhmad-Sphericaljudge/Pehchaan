@@ -145,10 +145,10 @@ export async function saveState(state) {
         [item.id, item.slug, item.name, item.description, item.eligibility, item.registrationInstructions, item.officialUrl, item.languages || {}, item.states, item.workerCategories, item.minAge, item.maxAge, item.active, item.updatedAt]);
     }
     for (const item of state.platformApplications || []) {
-      await client.query(`INSERT INTO platform_applications (id, kind, organization_name, contact_name, contact_email, contact_phone, notes, status, rejection_reason, reviewed_by, reviewed_at, created_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        ON CONFLICT (id) DO UPDATE SET contact_name=$4,contact_phone=$6,notes=$7,status=$8,rejection_reason=$9,reviewed_by=$10,reviewed_at=$11`,
-        [item.id, item.kind, item.organizationName, item.contactName, item.contactEmail, item.contactPhone, item.notes || '', item.status, item.rejectionReason, item.reviewedBy, item.reviewedAt, item.createdAt]);
+      await client.query(`INSERT INTO platform_applications (id, kind, organization_name, contact_name, contact_email, contact_phone, registration_number, official_domain, notes, status, rejection_reason, reviewed_by, reviewed_at, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        ON CONFLICT (id) DO UPDATE SET contact_name=$4,contact_phone=$6,registration_number=$7,official_domain=$8,notes=$9,status=$10,rejection_reason=$11,reviewed_by=$12,reviewed_at=$13`,
+        [item.id, item.kind, item.organizationName, item.contactName, item.contactEmail, item.contactPhone, item.registrationNumber || '', item.officialDomain || '', item.notes || '', item.status, item.rejectionReason, item.reviewedBy, item.reviewedAt, item.createdAt]);
     }
     for (const item of state.accountRecovery || []) {
       await client.query(`INSERT INTO account_recovery_requests (id, application_id, contact_email, reason, status, resolution_note, requested_by, resolved_by, resolved_at, created_at)
