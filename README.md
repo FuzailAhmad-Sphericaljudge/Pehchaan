@@ -266,6 +266,8 @@ FAQ, About mission text, and the welfare-scheme descriptions. Key properties:
   English edit never silently leaves other languages out of date.
 - **Draft before live.** Edits are held as a draft with a preview until the
   admin publishes; the public site always renders the last published body.
+  Drafts can also be discarded without publishing, and the editor shows when
+  and by whom a draft was last saved.
 - **Public pages.** Published pages are served from `/api/content/:slug` and
   rendered at `/privacy-policy`, `/terms-of-use`, and `/faq` (the FAQ index
   also lists the other pages and links them from the site footer). Visitors
