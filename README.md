@@ -13,6 +13,11 @@ and the Vite frontend with `npm run dev`.
 - **"Too many login attempts"** — login rate limiting allows 10 failed
   attempts per IP every 15 minutes. Successful logins never count against
   the limit. Restarting the API clears the in-memory buckets.
+- **"Too many verification requests / new accounts from this network"** —
+  Phase 33 abuse limits (Phase 8 plus per-IP daily caps on OTP requests and
+  new accounts). They reset after 24 hours and exist to stop bulk bot
+  sign-ups; genuine users hitting one by mistake should wait or contact
+  support, never be permanently blocked.
 - **Old UI after an update** — the service worker caches the app shell.
   Hard-refresh once (Ctrl+Shift+R); from v2 onward page navigations are
   network-first, so later deploys appear without a manual refresh.
