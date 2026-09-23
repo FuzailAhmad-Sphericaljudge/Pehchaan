@@ -1073,17 +1073,21 @@ function getWorkerDashboard(workerId) {
   }
 
   function localizeScheme(scheme, language = 'en') {
+    // Phase 34: scheme text is treated like CMS content — the worker always
+    // gets a published, non-empty body in the requested language, with a
+    // graceful fallback to the English/default text.
     const override = scheme.languages && typeof scheme.languages === 'object' ? scheme.languages[language] : null;
-    if (!override || typeof override !== 'object') {
-      return { id: scheme.id, slug: scheme.slug, name: scheme.name, description: scheme.description, eligibility: scheme.eligibility, registrationInstructions: scheme.registrationInstructions, officialUrl: scheme.officialUrl, languages: scheme.languages };
-    }
+    const pick = (value, fallback) => {
+      const text = String(value ?? '').trim();
+      return text || String(fallback ?? '');
+    };
     return {
       id: scheme.id,
       slug: scheme.slug,
-      name: String(override.name || scheme.name),
-      description: String(override.description || scheme.description),
-      eligibility: String(override.eligibility || scheme.eligibility),
-      registrationInstructions: String(override.registrationInstructions || scheme.registrationInstructions),
+      name: pick(override?.name, scheme.name),
+      description: pick(override?.description, scheme.description),
+      eligibility: pick(override?.eligibility, scheme.eligibility),
+      registrationInstructions: pick(override?.registrationInstructions, scheme.registrationInstructions),
       officialUrl: scheme.officialUrl,
       languages: scheme.languages,
     };
