@@ -3400,6 +3400,8 @@ const server = http.createServer(async (req, res) => {
       'POST /api/cases/:id/fraud-report',
       'GET /api/platform/fraud-reports',
       'GET /api/content/:slug',
+      'GET /api/content/:slug/versions',
+      'GET /api/content/:slug/version/:versionId',
       'GET|PUT /api/platform/content',
       'POST /api/platform/content/:slug/:locale/publish',
       'GET /api/platform/content/:slug/versions',
