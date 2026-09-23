@@ -2913,6 +2913,8 @@ const server = http.createServer(async (req, res) => {
       'POST /api/notifications/read',
       'GET|PATCH /api/notifications/preferences',
       'POST /api/notifications/push-subscribe',
+      'POST /api/cases/:id/fraud-report',
+      'GET /api/platform/fraud-reports',
       'POST /api/admin/revoke-account',
     ],
   });
