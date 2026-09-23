@@ -929,6 +929,8 @@ function defaultContentPages() {
     '*ड्राफ्ट — कानूनी समीक्षा लंबित।*',
   ].join('\n');
   return [
+    { slug: 'privacy-policy', kind: 'legal', locales: { en: { body: privacyEn }, hi: { body: privacyHi } } },
+    { slug: 'terms-of-use', kind: 'legal', locales: { en: { body: termsEn }, hi: { body: termsHi } } },
     { slug: 'worker-consent', kind: 'legal', locales: { en: { body: consentEn }, hi: { body: consentHi } } },
     { slug: 'faq', kind: 'static', locales: { en: { body: faqEn.map((item) => `### ${item.q}\n\n${item.a}`).join('\n\n') }, hi: { body: faqHi.map((item) => `### ${item.q}\n\n${item.a}`).join('\n\n') } } },
     { slug: 'about-mission', kind: 'static', locales: { en: { body: mission.en }, hi: { body: mission.hi } } },
