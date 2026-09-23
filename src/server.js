@@ -1030,7 +1030,9 @@ function getWorkerDashboard(workerId) {
     worker,
     wageEntries: wageEntries.filter((entry) => entry.workerId === workerId),
     checkIns: checkIns.filter((entry) => entry.workerId === workerId),
-    cases: cases.filter((entry) => entry.workerId === workerId),
+    // Phase 33: workers see that their case is in review, never the raw
+    // anti-spam signals — those read as accusations and belong to caseworkers.
+    cases: cases.filter((entry) => entry.workerId === workerId).map((entry) => ({ ...entry, fraudReview: entry.fraudReview ? { flagged: Boolean(entry.fraudReview.flagged), disposition: entry.fraudReview.disposition || null } : undefined })),
     workRelationships: relationshipsFor(workerId),
     incomeByRelationship: incomeByRelationship(workerId),
     schemes: matchingSchemes(worker.profile).map((scheme) => localizeScheme(scheme, worker.language)),
