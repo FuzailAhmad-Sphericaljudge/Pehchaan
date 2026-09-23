@@ -437,7 +437,14 @@ function AboutPage({ lang }: { lang: Language }) {
 
 function JoinPilot({ lang }: { lang: Language }) {
   const hi = lang === "hi";
-  return <main className="page-hero"><p className="eyebrow">{t_public(lang, "join")}</p><h1>{hi ? "पायलट से जुड़ें।" : "Join the pilot."}</h1><p>{hi ? "हम उन NGO और श्रमिक समुदायों के साथ काम कर रहे हैं जो मजदूरी, सुरक्षा और बंधुआ मजदूरी के मामलों पर रिकॉर्डिंग चाहते हैं।" : "We are working with NGOs and worker communities who want organized records for wage, safety, and debt bondage cases."}</p><div className="hero-actions"><Link className="button" to="/worker/login">{hi ? "श्रमिक के रूप में शुरू करें" : "Start as a worker"} →</Link><Link className="button button-ghost" to="/ngo/login">{hi ? "संस्था लॉगिन" : "Organization login"}</Link><Link className="button button-ghost" to="/employer/interest">{hi ? "नियोक्ता साझेदारी" : "Employer partnership"}</Link></div><p className="helper">{hi ? "पायलट डेमो: OTP मोड में 123456 डालें · NGO: ngo@pehchaan.org / demo" : "Pilot demo: use OTP 123456 in demo mode · NGO: ngo@pehchaan.org / demo"}</p></main>;
+  return <main className="page-hero"><p className="eyebrow">{t_public(lang, "join")}</p><h1>{hi ? "पायलट से जुड़ें।" : "Join the pilot."}</h1><p>{hi ? "हम उन NGO और श्रमिक समुदायों के साथ काम कर रहे हैं जो मजदूरी, सुरक्षा और बंधुआ मजदूरी के मामलों पर रिकॉर्डिंग चाहते हैं।" : "We are working with NGOs and worker communities who want organized records for wage, safety, and debt bondage cases."}</p><div className="hero-actions"><Link className="button" to="/worker/login">{hi ? "श्रमिक के रूप में शुरू करें" : "Start as a worker"} →</Link><Link className="button button-ghost" to="/ngo/login">{hi ? "संस्था लॉगिन" : "Organization login"}</Link><Link className="button button-ghost" to="/employer/interest">{hi ? "नियोक्ता साझेदारी" : "Employer partnership"}</Link></div><p className="helper">{hi ? "पायलट डेमो: OTP मोड में 123456 डालें · NGO: ngo@pehchaan.org / demo" : "Pilot demo: use OTP 123456 in demo mode · NGO: ngo@pehchaan.org / demo"}</p><CmsFaqSection lang={lang} /></main>;
+}
+
+function CmsFaqSection({ lang }: { lang: Language }) {
+  const [body, setBody] = React.useState<string | null>(null);
+  React.useEffect(() => { contentApi.page("faq").then((page) => setBody(page.locales[lang]?.body || page.locales.en?.body || null)).catch(() => setBody(null)); }, [lang]);
+  if (!body) return null;
+  return <section className="faq-section"><h2>{lang === "hi" ? "सामान्य प्रश्न" : "Frequently asked questions"}</h2><div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(body) }} /><p className="helper"><Link className="text-link" to="/faq">{lang === "hi" ? "पूरा FAQ पढ़ें →" : "Read the full FAQ →"}</Link></p></section>;
 }
 
 function ContentPage({ lang, slug }: { lang: Language; slug: string }) {
