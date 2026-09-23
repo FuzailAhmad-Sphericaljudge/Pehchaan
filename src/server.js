@@ -1832,10 +1832,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const existing = welfareSchemes.get(slug);
+    // Phase 34: language overrides follow the CMS shape — plain strings only,
+    // capped so one scheme row cannot balloon the state payload.
+    const rawLanguages = body.languages && typeof body.languages === 'object' && !Array.isArray(body.languages) ? body.languages : {};
+    const languages = {};
+    for (const [locale, override] of Object.entries(rawLanguages).slice(0, contentLocales.length)) {
+      if (!contentLocales.includes(locale) || !override || typeof override !== 'object' || Array.isArray(override)) continue;
+      const clean = {};
+      for (const field of ['name', 'description', 'eligibility', 'registrationInstructions']) {
+        const text = String(override[field] ?? '').trim();
+        if (text) clean[field] = text.slice(0, 5000);
+      }
+      if (Object.keys(clean).length) languages[locale] = clean;
+    }
     const scheme = {
       id: existing?.id || randomUUID(), slug, name, description, eligibility, registrationInstructions,
       officialUrl: body.officialUrl ? String(body.officialUrl) : null,
-      languages: body.languages && typeof body.languages === 'object' ? body.languages : {},
+      languages,
       states: Array.isArray(body.states) ? body.states.map(String) : ['All India'],
       workerCategories: Array.isArray(body.workerCategories) ? body.workerCategories.map(String) : [],
       minAge: body.minAge === null || body.minAge === undefined || body.minAge === '' ? null : Number(body.minAge),
