@@ -760,7 +760,7 @@ function PlatformContentEditor() {
       </div>
       {page && selected && <div className="list-panel cms-editor">
         <h2>{page.title}</h2>
-        <div className="filter-row">{locales.map((locale) => <button className={locale === selected.locale ? "filter active" : "filter"} onClick={() => setSelected({ ...selected, locale })} key={locale}>{localeNames[locale] || locale}{page.staleLocales.includes(locale) ? " ⚠" : ""}{page.drafts[locale] ? " ✎" : ""}</button>)}</div>
+        <div className="filter-row">{locales.map((locale) => <button className={locale === selected.locale ? "filter active" : "filter"} onClick={() => setSelected({ ...selected, locale })} key={locale}>{localeNames[locale] || locale}{page.staleLocales.includes(locale) ? " ⚠" : ""}{page.drafts[locale] ? " ✎" : ""}{page.locales[locale]?.body ? "" : " ·"}</button>)}</div>
         {page.staleLocales.includes(selected.locale) && <p className="helper">⚠ This language has not been updated since the latest publish. Please update it so no language is left behind.</p>}
         {preview
           ? <div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(body) }} />
