@@ -3035,6 +3035,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Phase 34: discard a saved draft without publishing it, so an abandoned
+  // edit does not linger in the editor or quietly publish later.
+  if (req.method === 'DELETE' && pathname.match(/^\/api\/platform\/content\/[^/]+\/[^/]+\/draft$/)) {
+    const actor = authenticate(req, res, ['platform_admin']);
+    if (!actor) return;
+    // Path is /api/platform/content/:slug/:locale/draft — indices 4 and 5.
+    const [, , , , slug, locale] = pathname.split('/');
+    if (!contentLocales.includes(locale)) { jsonResponse(res, 400, { error: 'Unsupported locale.' }); return; }
+    const page = contentPages.get(slug);
+    if (!page || !page.drafts?.[locale]) { jsonResponse(res, 404, { error: 'No draft saved for this page and language.' }); return; }
+    delete page.drafts[locale];
+    makeAudit('content_draft_discarded', actor.sub, slug, { locale });
+    persist();
+    jsonResponse(res, 200, { slug, locale, drafts: page.drafts });
+    return;
+  }
+
   // Phase 34: version history. Legal pages (Privacy Policy, Terms of Use)
   // keep every version so the team can show what the policy said on any date.
   if (req.method === 'GET' && pathname.match(/^\/api\/platform\/content\/[^/]+\/versions$/)) {
@@ -3406,6 +3423,7 @@ const server = http.createServer(async (req, res) => {
       'GET /api/content/:slug/version/:versionId',
       'GET|PUT /api/platform/content',
       'POST /api/platform/content/:slug/:locale/publish',
+      'DELETE /api/platform/content/:slug/:locale/draft',
       'GET /api/platform/content/:slug/versions',
       'POST /api/platform/content/:slug/restore',
       'POST /api/admin/revoke-account',
