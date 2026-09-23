@@ -1853,6 +1853,102 @@ const server = http.createServer(async (req, res) => {
     jsonResponse(res, 204, {});
     return;  }
 
+
+  if (req.method === 'GET' && pathname === '/api/notifications/vapid-public-key') {
+    // The VAPID public key is public by design; the browser needs it to create
+    // a push subscription whose key matches the one the server signs with.
+    jsonResponse(res, 200, { publicKey: process.env.PUSH_PROVIDER === 'vapid' ? process.env.VAPID_PUBLIC_KEY || null : null });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/notifications') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const audienceRole = actor.role === 'worker' ? 'worker' : 'ngo';
+    const audience = audienceRole === 'worker'
+      ? notifications.filter((item) => item.audienceRole === 'worker' && item.workerId === actor.sub)
+      : notifications.filter((item) => item.audienceRole === 'ngo');
+    const unread = audience.filter((item) => !item.readAt).length;
+    jsonResponse(res, 200, { notifications: audience.slice(0, 50).map(serializeNotification), unread, total: audience.length });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/notifications/read') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const audienceRole = actor.role === 'worker' ? 'worker' : 'ngo';
+    const body = await parseBody(req);
+    const now = new Date().toISOString();
+    let changed = 0;
+    for (const notification of notifications) {
+      if (notification.audienceRole !== audienceRole) continue;
+      if (audienceRole === 'worker' && notification.workerId !== actor.sub) continue;
+      if (Array.isArray(body.ids) ? body.ids.includes(notification.id) : !notification.readAt) {
+        if (!notification.readAt) { notification.readAt = now; changed += 1; }
+      }
+    }
+    if (changed) persist();
+    const audience = audienceRole === 'worker'
+      ? notifications.filter((item) => item.audienceRole === 'worker' && item.workerId === actor.sub)
+      : notifications.filter((item) => item.audienceRole === 'ngo');
+    jsonResponse(res, 200, { updated: changed, unread: audience.filter((item) => !item.readAt).length });
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/notifications/preferences') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    jsonResponse(res, 200, { preferences: notificationPreferencesFor(actor.sub) });
+    return;
+  }
+
+  if (req.method === 'PATCH' && pathname === '/api/notifications/preferences') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const prefs = notificationPreferencesFor(actor.sub);
+    for (const key of ['caseUpdates', 'caseNotes', 'wageFlags', 'schemeMatches']) {
+      if (typeof body[key] === 'boolean') prefs[key] = body[key];
+    }
+    persist();
+    jsonResponse(res, 200, { preferences: prefs });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/notifications/push-subscribe') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const endpoint = String(body.endpoint || '');
+    const p256dh = String(body.keys?.p256dh || body.p256dh || '');
+    const auth = String(body.keys?.auth || body.auth || '');
+    if (!endpoint || !p256dh || !auth) {
+      jsonResponse(res, 400, { error: 'A push subscription endpoint and keys are required.' });
+      return;
+    }
+    const audienceRole = actor.role === 'worker' ? 'worker' : 'ngo';
+    const existing = Array.from(pushSubscriptions.values()).find((item) => item.endpoint === endpoint);
+    const subscription = existing || { id: randomUUID(), audienceRole, workerId: actor.role === 'worker' ? actor.sub : null, endpoint, p256dh, auth, createdAt: new Date().toISOString() };
+    subscription.p256dh = p256dh;
+    subscription.auth = auth;
+    pushSubscriptions.set(subscription.id, subscription);
+    persist();
+    jsonResponse(res, 201, { subscribed: true, delivery: process.env.PUSH_PROVIDER === 'vapid' ? 'vapid' : 'in_app_only' });
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/notifications/push-unsubscribe') {
+    const actor = authenticate(req, res, ['worker', 'ngo_caseworker', 'ngo_admin']);
+    if (!actor) return;
+    const body = await parseBody(req);
+    const endpoint = String(body.endpoint || '');
+    for (const [id, subscription] of pushSubscriptions) {
+      if (subscription.endpoint === endpoint) pushSubscriptions.delete(id);
+    }
+    persist();
+    jsonResponse(res, 200, { subscribed: false });
+    return;
+  }
   if (req.method === 'GET' && pathname === '/api/worker/export') {
     const actor = authenticate(req, res, ['worker']);
     if (!actor) return;
