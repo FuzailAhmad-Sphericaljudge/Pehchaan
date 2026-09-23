@@ -218,7 +218,7 @@ export const contentApi = {
   page: (slug: string) => request<ContentPage>(`/api/content/${encodeURIComponent(slug)}`),
   list: () => request<{ pages: PlatformContentPage[]; locales: string[]; localeNames: Record<string, string> }>("/api/platform/content"),
   saveDraft: (slug: string, locale: string, body: string) => request<{ slug: string; locale: string; draft: ContentDraft }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}`, { ...json({ body }), method: "PUT" }),
-  publish: (slug: string, locale: string, body: string, note = "") => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/publish`, json({ body, note })),
+  publish: (slug: string, locale: string, body: string, note = "") => request<{ page: PlatformContentPage; version: ContentVersion; staleLocales?: string[] }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/publish`, json({ body, note })),
   versions: (slug: string) => request<{ slug: string; kind: ContentPage["kind"]; versions: ContentVersion[] }>(`/api/platform/content/${encodeURIComponent(slug)}/versions`),
   restore: (slug: string, versionId: string) => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/restore`, json({ versionId })),
 };
