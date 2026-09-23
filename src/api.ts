@@ -244,6 +244,8 @@ export const ngoApi = {
   addNote: (caseId: string, body: { author: string; text: string }) => request<{ note: CaseDetail["notes"][number] }>(`/api/ngo/cases/${encodeURIComponent(caseId)}/notes`, json(body)),
   audit: () => request<{ entries: CaseDetail["auditLog"] }>("/api/ngo/audit-log"),
   aiPatterns: () => request<{ patterns: { employer: string; complaintCount: number; independentWorkers: number; caseIds: string[]; signal: string }[] }>("/api/ngo/ai-patterns"),
+  reportFraud: (caseId: string, body: { reason: string; detail?: string }) => request<{ report: FraudReport; case: NgoCase }>(`/api/cases/${encodeURIComponent(caseId)}/fraud-report`, json(body)),
+  setFraudDisposition: (caseId: string, disposition: "dismissed" | "confirmed") => request<{ case: NgoCase }>(`/api/ngo/cases/${encodeURIComponent(caseId)}`, { ...json({ fraudDisposition: disposition }), method: "PATCH" }),
   alerts: () => request<{ alerts: Alert[]; total: number }>("/api/ngo/alerts"),
   updateAlert: (alertId: string, body: Record<string, unknown>) => request<{ alert: Alert }>(`/api/ngo/alerts/${encodeURIComponent(alertId)}`, { ...json(body), method: "PATCH" }),
   impact: (range = "month") => request<ImpactReport>(`/api/analytics/impact?range=${encodeURIComponent(range)}`),
