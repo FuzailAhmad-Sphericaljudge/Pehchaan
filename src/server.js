@@ -3011,7 +3011,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && pathname === '/api/ngo/audit-log') {
     if (!authenticate(req, res, ['ngo_caseworker', 'ngo_admin'])) return;
-    jsonResponse(res, 200, { entries: auditLog, total: auditLog.length });
+    // Phase 34: platform content operations are the platform team's business;
+    // the NGO log stays scoped to case work.
+    const visible = auditLog.filter((entry) => !String(entry.action).startsWith('content_'));
+    jsonResponse(res, 200, { entries: visible, total: visible.length });
     return;
   }
 
