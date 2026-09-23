@@ -712,6 +712,8 @@ function serializeApplication(item) {
     contactName: item.contactName,
     contactEmail: item.contactEmail,
     contactPhone: item.contactPhone || null,
+    registrationNumber: item.registrationNumber || '',
+    officialDomain: item.officialDomain || '',
     notes: item.notes || '',
     status: item.status,
     rejectionReason: item.rejectionReason || null,
