@@ -450,11 +450,12 @@ function CmsFaqSection({ lang }: { lang: Language }) {
 function ContentPage({ lang, slug }: { lang: Language; slug: string }) {
   const [page, setPage] = React.useState<import("./api").ContentPage | null>(null);
   const [error, setError] = React.useState(false);
-  React.useEffect(() => { contentApi.page(slug).then(setPage).catch(() => setError(true)); }, [slug]);
+  const [viewLocale, setViewLocale] = React.useState<string | null>(null);
+  React.useEffect(() => { setPage(null); setError(false); setViewLocale(null); contentApi.page(slug).then(setPage).catch(() => setError(true)); }, [slug]);
   const locales = page ? Object.keys(page.locales) : [];
-  const preferred = page ? (page.locales[lang] ? lang : page.locales.en ? "en" : locales[0]) : null;
+  const preferred = page ? (viewLocale || (page.locales[lang] ? lang : page.locales.en ? "en" : locales[0])) : null;
   const entry = page && preferred ? page.locales[preferred] : null;
-  return <main className="page-hero content-page"><p className="eyebrow">{page?.title || (lang === "hi" ? "जानकारी" : "Information")}</p>{error || (page && !entry) ? <div className="error-box"><p>{lang === "hi" ? "यह पेज अभी उपलब्ध नहीं है।" : "This page is not available yet."}</p></div> : !page ? <Loading lang={lang} /> : <><div className="filter-row">{locales.map((locale) => <span className={locale === preferred ? "filter active" : "filter"} key={locale}>{contentLocaleNames[locale] || locale}</span>)}</div><div className="cms-preview" dangerouslySetInnerHTML={{ __html: entry ? tinyMarkdown(entry.body) : "" }} /><p className="helper">{lang === "hi" ? "यह पेज Pehchaan टीम अपडेट करती है — नवीनतम संस्करण हमेशा यहीं दिखता है।" : "This page is maintained by the Pehchaan team — the latest published version always appears here."}</p></>}</main>;
+  return <main className="page-hero content-page"><p className="eyebrow">{page?.title || (lang === "hi" ? "जानकारी" : "Information")}</p>{error || (page && !entry) ? <div className="error-box"><p>{lang === "hi" ? "यह पेज अभी उपलब्ध नहीं है।" : "This page is not available yet."}</p></div> : !page ? <Loading lang={lang} /> : <><div className="filter-row">{locales.map((locale) => <button className={locale === preferred ? "filter active" : "filter"} onClick={() => setViewLocale(locale)} key={locale}>{contentLocaleNames[locale] || locale}</button>)}</div><div className="cms-preview" dangerouslySetInnerHTML={{ __html: entry ? tinyMarkdown(entry.body) : "" }} /><p className="helper">{lang === "hi" ? "यह पेज Pehchaan टीम अपडेट करती है — नवीनतम संस्करण हमेशा यहीं दिखता है।" : "This page is maintained by the Pehchaan team — the latest published version always appears here."}</p></>}</main>;
 }
 
 function PublicPage({ lang, title }: { lang: Language; title: string }) { return <main className="page-hero"><p className="eyebrow">{title}</p><h1>{lang === "hi" ? "सुरक्षित सहायता तक एक साफ रास्ता।" : "A clear path to safer support."}</h1><p>{lang === "hi" ? "यह जानकारी पेज जल्द ही और विस्तार से उपलब्ध होगा।" : "This information page will be expanded soon."}</p></main>; }
