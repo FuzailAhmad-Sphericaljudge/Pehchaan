@@ -141,6 +141,8 @@ export const employerApi = {
   createWorksite: (name: string) => request<{ worksite: { id: string; name: string; registrationCode: string; verified: boolean }; qrPayload: string; qrDataUrl: string }>("/api/employer/worksites", json({ name })),
 };
 
+
+export type ConsentNoticeStatus = { acknowledged: string | null; acknowledgedAt: string | null; notice: { version: string; publishedAt: string; draft: boolean } | null };
 export const workerApi = {
   dashboard: (workerId: string) => request<Dashboard>(`/api/workers/${encodeURIComponent(workerId)}`),
   addWage: (body: Record<string, unknown>) => request<{ wageEntry: WageEntry; fairPay: NonNullable<WageEntry["fairPay"]> }>("/api/wage-entries", json(body)),
@@ -148,6 +150,10 @@ export const workerApi = {
   createCase: (body: Record<string, unknown>) => request<{ case: WorkerCase }>("/api/cases", json(body)),
   linkWorksite: (registrationCode: string) => request<{ worksite: { id: string; name: string; verified: boolean } }>("/api/worksites/link", json({ registrationCode })),
   updateProfile: (body: Record<string, unknown>) => request<{ worker: Worker }>("/api/worker/profile", { ...json(body), method: "PATCH" }),
+  consentNotice: {
+    get: () => request<ConsentNoticeStatus>("/api/worker/consent-notice"),
+    acknowledge: () => request<{ acknowledged: string; acknowledgedAt: string }>("/api/worker/consent-notice", { method: "POST" }),
+  },
 };
 export const workRelationshipApi = {
   create: (body: Record<string, unknown>) => request<{ relationship: WorkRelationship }>("/api/work-relationships", json(body)),
