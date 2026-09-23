@@ -216,10 +216,12 @@ export type ContentVersion = { id: string; slug: string; kind: "legal" | "static
 export const contentApi = {
   index: () => request<{ pages: { slug: string; kind: "legal" | "static"; title: string; locales: string[]; lastPublishedAt: string | null }[] }>("/api/content"),
   page: (slug: string) => request<ContentPage>(`/api/content/${encodeURIComponent(slug)}`),
+  versions: (slug: string) => request<{ slug: string; versions: { id: string; locale: string; note: string; publishedAt: string; publishedBy: string }[] }>(`/api/content/${encodeURIComponent(slug)}/versions`),
+  version: (slug: string, versionId: string) => request<{ slug: string; version: ContentVersion }>(`/api/content/${encodeURIComponent(slug)}/version/${encodeURIComponent(versionId)}`),
   list: () => request<{ pages: PlatformContentPage[]; locales: string[]; localeNames: Record<string, string> }>("/api/platform/content"),
   saveDraft: (slug: string, locale: string, body: string) => request<{ slug: string; locale: string; draft: ContentDraft }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}`, { ...json({ body }), method: "PUT" }),
   publish: (slug: string, locale: string, body: string, note = "") => request<{ page: PlatformContentPage; version: ContentVersion; staleLocales?: string[] }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/publish`, json({ body, note })),
-  versions: (slug: string) => request<{ slug: string; kind: ContentPage["kind"]; versions: ContentVersion[] }>(`/api/platform/content/${encodeURIComponent(slug)}/versions`),
+  platformVersions: (slug: string) => request<{ slug: string; kind: ContentPage["kind"]; versions: ContentVersion[] }>(`/api/platform/content/${encodeURIComponent(slug)}/versions`),
   restore: (slug: string, versionId: string) => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/restore`, json({ versionId })),
 };
 
