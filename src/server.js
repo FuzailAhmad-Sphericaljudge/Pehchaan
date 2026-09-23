@@ -34,6 +34,12 @@ const workRelationships = new Map();
 const trustedContacts = new Map();
 const platformApplications = new Map();
 const accountRecovery = new Map();
+const notifications = [];
+const notificationPreferences = new Map();
+const pushSubscriptions = new Map();
+const notificationQueue = [];
+let notificationTimer = null;
+
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
 const smsSessions = new Map();
