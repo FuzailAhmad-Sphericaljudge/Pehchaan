@@ -2603,7 +2603,10 @@ const server = http.createServer(async (req, res) => {
 
       worker.profile = { ...worker.profile, ...(body.profile || {}) };
       worker.language = body.language || worker.language;
-      worker.consent = { ...worker.consent, ...(body.consent || {}) };
+      // Phase 35: the consent-notice acknowledgement is set only through the
+      // dedicated endpoint below, so it always carries a verified version.
+      const { consentNotice: _ignored, ...restConsent } = body.consent || {};
+      worker.consent = { ...worker.consent, ...restConsent };
       makeAudit('worker_profile_updated', worker.id, worker.id, { profile: worker.profile });
 
       jsonResponse(res, 200, { worker });
@@ -2612,6 +2615,35 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 400, { error: error.message || 'Invalid request.' });
       return;
     }
+  }
+
+  // Phase 35: worker acknowledgement of the consent notice. The ack stores
+  // the exact published version of the worker-consent legal page that was
+  // live when the worker accepted, so the team can always answer "what did
+  // this worker agree to, and when".
+  if (req.method === 'GET' && pathname === '/api/worker/consent-notice') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const worker = Array.from(workers.values()).find((item) => item.id === actor.sub);
+    if (!worker) { jsonResponse(res, 404, { error: 'Worker not found.' }); return; }
+    const page = contentPages.get('worker-consent');
+    const notice = page?.locales?.en?.body ? { version: page.locales.en.publishedAt, publishedAt: page.locales.en.publishedAt, draft: !page.locales.en.publishedBy } : null;
+    jsonResponse(res, 200, { acknowledged: worker.consent?.consentNotice?.version || null, acknowledgedAt: worker.consent?.consentNotice?.at || null, notice });
+    return;
+  }
+  if (req.method === 'POST' && pathname === '/api/worker/consent-notice') {
+    const actor = authenticate(req, res, ['worker']);
+    if (!actor) return;
+    const worker = Array.from(workers.values()).find((item) => item.id === actor.sub);
+    if (!worker) { jsonResponse(res, 404, { error: 'Worker not found.' }); return; }
+    const page = contentPages.get('worker-consent');
+    const version = page?.locales?.en?.publishedAt || null;
+    if (!version) { jsonResponse(res, 409, { error: 'The consent notice has not been published yet.' }); return; }
+    worker.consent = { ...worker.consent, consentNotice: { version, at: new Date().toISOString() } };
+    makeAudit('consent_notice_acknowledged', worker.id, worker.id, { version });
+    persist();
+    jsonResponse(res, 200, { acknowledged: version, acknowledgedAt: worker.consent.consentNotice.at });
+    return;
   }
 
   if (req.method === 'POST' && pathname === '/api/wage-entries') {
