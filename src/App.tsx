@@ -771,7 +771,7 @@ function PlatformContentEditor() {
           <button className="button button-small" disabled={busy} onClick={() => { setBusy(true); contentApi.saveDraft(page.slug, selected.locale, body).then(() => { setMessage("Draft saved."); setError(""); }).catch(() => { setError("Could not save the draft."); }).finally(() => setBusy(false)); }}>Save draft</button>
           <button className="button button-small" onClick={() => setPreview((value) => !value)}>{preview ? "Edit" : "Preview"}</button>
           <button className="button button-small" disabled={busy || !body.trim()} onClick={() => { setBusy(true); contentApi.publish(page.slug, selected.locale, body, note).then((result) => { const stale = result.staleLocales || page.staleLocales.filter((item) => item !== selected.locale); setMessage(stale.length ? `Published. Now out of date in: ${stale.map((item) => localeNames[item] || item).join(", ")}. Please update those languages.` : "Published in all languages with a live version."); setError(""); return load(); }).catch(() => { setError("Could not publish."); }).finally(() => setBusy(false)); }}>Publish</button>
-          <button className="button button-small" onClick={() => { contentApi.versions(page.slug).then((result) => setVersions(result.versions)).catch(() => setError("Could not load versions.")); }}>History</button>
+          <button className="button button-small" onClick={() => { contentApi.platformVersions(page.slug).then((result) => setVersions(result.versions)).catch(() => setError("Could not load versions.")); }}>History</button>
         </div>
         {message && <p className="success">{message}</p>}
         {error && <p className="error">{error}</p>}
