@@ -408,7 +408,7 @@ async function handleSmsMessage(req, res) {
     const summary = text.replace(/^COMPLAINT\s*/i, '').trim();
     if (!summary) { smsReply(res, 'Reply COMPLAINT followed by your problem.'); return; }
     const newCase = { id: `case-${Date.now()}`, workerId: worker.id, type: 'other', priority: 'medium', status: 'new', summary, owner: null, immediateDanger: false, happeningNow: false, aiTriage: buildAiTriage(summary), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), source: 'sms' };
-    cases.push(newCase); makeAudit('case_created', worker.id, newCase.id, { source: 'sms' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, newCase.aiTriage); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, `Case ${newCase.id} created. Reply 5 for status.\\n${smsMenu(session.language)}`); return;
+    cases.push(newCase); applyFraudScreening(newCase, { ip: clientIp(req) }); recordFraudScreenSeen(clientIp(req), summary); if (newCase.fraudReview) makeAudit('case_flagged_for_fraud_review', 'system:fraud-screening', newCase.id, { signals: newCase.fraudReview.signals, source: 'sms' }); makeAudit('case_created', worker.id, newCase.id, { source: 'sms' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, newCase.aiTriage); session.state = 'menu'; smsSessions.set(phone, session); smsReply(res, `Case ${newCase.id} created. Reply 5 for status.\\n${smsMenu(session.language)}`); return;
   }
   if (upper === 'STATUS' || text === '5') {
     const ownCases = cases.filter((item) => item.workerId === worker.id).slice(-3);
@@ -457,7 +457,7 @@ async function handleWhatsAppMessage(req, res) {
   if (session.state === 'complaint_detail') {
     const aiTriage = buildAiTriage(text, { type: 'other' });
     const newCase = { id: `case-${Date.now()}`, workerId: worker.id, type: 'other', priority: 'medium', status: 'new', summary: text, owner: null, immediateDanger: false, happeningNow: false, aiTriage, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), source: 'whatsapp' };
-    cases.push(newCase); session.state = 'menu'; makeAudit('case_created', worker.id, newCase.id, { source: 'whatsapp' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, aiTriage); whatsappSessions.set(phone, session);
+    cases.push(newCase); applyFraudScreening(newCase, { ip: clientIp(req) }); recordFraudScreenSeen(clientIp(req), text); if (newCase.fraudReview) makeAudit('case_flagged_for_fraud_review', 'system:fraud-screening', newCase.id, { signals: newCase.fraudReview.signals, source: 'whatsapp' }); session.state = 'menu'; makeAudit('case_created', worker.id, newCase.id, { source: 'whatsapp' }); makeAudit('ai_triage_suggested', 'system:ai-triage', newCase.id, aiTriage); whatsappSessions.set(phone, session);
     whatsappResponse(res, language === 'en' ? `Your case ${newCase.id} was created.\\n\\n${whatsappMenu(language)}` : `आपका मामला ${newCase.id} बन गया है।\\n\\n${whatsappMenu(language)}`); return;
   }
   if (session.state === 'case_status') {
