@@ -127,6 +127,37 @@ in with `PLATFORM_ADMIN_EMAIL` / `PLATFORM_ADMIN_PASSWORD` (demo:
 
 Seed approvals live in `migrations/019_platform_admin.sql`.
 
+## Notification center (Phase 32)
+
+Pehchaan now has a general, in-app **notification center** — separate from and
+declaredly lower-priority than the Phase 11 safety-escalation channel. Safety
+alerts keep their own direct path (`alerts` table, escalation timer, SMS stub)
+and never enter the routine notification queue, so routine processing can never
+delay an escalation.
+
+- **Bell + unread count** in the worker and NGO side navigation; the panel lists
+  case status changes, caseworker notes, fair-pay wage flags (Phase 26), new
+  eligible-scheme alerts, and (for NGO staff) case assignments, re-opens, and
+  escalated safety alerts. Escalation notifications are delivered immediately
+  and mark themselves read when the underlying alert is acknowledged — they
+  link to the Phase 11 alert instead of duplicating it.
+- **Web push** for the Phase 20 PWA: workers and NGO staff opt in from the bell
+  panel's settings. The service worker (`public/sw.js`) shows the notification
+  and focuses the app on click. Push is signed with VAPID and relayed via
+  `PUSH_API_URL`; without provider config the in-app center remains the channel
+  and delivery retries later.
+- **Preferences**: workers can switch off case updates, notes, wage checks, and
+  scheme matches individually. Safety-related notifications are never
+  suppressible. NGO notification types are always on (they are work items).
+- Delivery is batched on a 5-second low-priority timer; the safety-alert path is
+  untouched and synchronous.
+
+Schema lives in `migrations/020_notification_center.sql` (notifications,
+notification_preferences, push_subscriptions). Set `PUSH_PROVIDER=vapid` plus
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` / `PUSH_API_URL` in
+`.env` to enable real browser push; generate keys with
+`npx web-push generate-vapid-keys`.
+
 ## Minimum wage and fair-pay checker
 
 Worker wage entries are compared with an admin-maintained reference table by
