@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -38,8 +38,11 @@ export async function loadState() {
     query("SELECT * FROM trusted_contacts WHERE status != 'removed'"),
     query('SELECT * FROM platform_applications ORDER BY created_at ASC'),
     query('SELECT * FROM account_recovery_requests ORDER BY created_at DESC'),
+    query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 2000'),
+    query('SELECT * FROM notification_preferences'),
+    query('SELECT * FROM push_subscriptions'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows };
 }
 
 export async function saveState(state) {
@@ -151,6 +154,24 @@ export async function saveState(state) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (id) DO UPDATE SET status=$5,resolution_note=$6,resolved_by=$8,resolved_at=$9`,
         [item.id, item.applicationId, item.contactEmail, item.reason, item.status, item.resolutionNote, item.requestedBy, item.resolvedBy, item.resolvedAt, item.createdAt]);
+    }
+    for (const item of state.notifications || []) {
+      await client.query(`INSERT INTO notifications (id, audience_role, worker_id, case_id, type, priority, title, body, meta, read_at, delivered_push_at, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        ON CONFLICT (id) DO UPDATE SET read_at=$10,delivered_push_at=$11`,
+        [item.id, item.audienceRole, item.workerId, item.caseId, item.type, item.priority, item.title, item.body, item.meta || {}, item.readAt, item.deliveredPushAt, item.createdAt]);
+    }
+    for (const item of state.notificationPreferences || []) {
+      await client.query(`INSERT INTO notification_preferences (worker_id, case_updates, case_notes, wage_flags, scheme_matches)
+        VALUES ($1,$2,$3,$4,$5)
+        ON CONFLICT (worker_id) DO UPDATE SET case_updates=$2,case_notes=$3,wage_flags=$4,scheme_matches=$5`,
+        [item.workerId, item.caseUpdates, item.caseNotes, item.wageFlags, item.schemeMatches]);
+    }
+    for (const item of state.pushSubscriptions || []) {
+      await client.query(`INSERT INTO push_subscriptions (id, audience_role, worker_id, endpoint, p256dh, auth, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (endpoint) DO UPDATE SET p256dh=$5,auth=$6`,
+        [item.id, item.audienceRole, item.workerId, item.endpoint, item.p256dh, item.auth, item.createdAt]);
     }
     await client.query('COMMIT');
   } catch (error) {
