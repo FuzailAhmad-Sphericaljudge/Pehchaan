@@ -183,6 +183,10 @@ sincere repeated report must never be silently blocked.
   accounts are exempt), complaints per account per day (10) and per IP per day
   (40), organization applications per IP per day (10). Every triggered limit
   writes an `abuse_limit_triggered` audit entry.
+- **Feature-phone flood caps.** USSD sessions are capped at 60 per phone per
+  day and chat-channel wage entries at 40 per account per day — generous for
+  any genuine user, hostile to dialing scripts. The USSD help alert is safety-
+  critical and is never capped; neither are safety check-ins anywhere.
 - **Employer & NGO verification.** Partner applications (`/partner-signup`)
   must include a registration number (NGO Darpan ID, CIN, society registration)
   or an official email/website domain. The server refuses to approve a pending
