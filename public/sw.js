@@ -29,3 +29,41 @@ self.addEventListener("fetch", (event) => {
     }).catch(() => caches.match("/index.html"))),
   );
 });
+
+// Phase 32: Notifications Center. Routine notifications arrive here on a
+// best-effort basis; Phase 11 safety escalation never depends on this handler.
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { title: "Pehchaan", body: event.data ? event.data.text() : "" };
+  }
+  const title = payload.title || "Pehchaan";
+  const options = {
+    body: payload.body || "",
+    icon: "/icon-192.svg",
+    badge: "/icon-192.svg",
+    tag: payload.id || payload.type || "pehchaan-notification",
+    data: { caseId: payload.caseId || null, type: payload.type || null },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const caseId = event.notification.data && event.notification.data.caseId;
+  const target = caseId ? `${self.registration.scope}worker/cases` : `${self.registration.scope}worker`;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) {
+          client.focus();
+          if (caseId && "navigate" in client) client.navigate(target).catch(() => undefined);
+          return;
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
+});
