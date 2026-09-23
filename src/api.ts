@@ -221,6 +221,7 @@ export const platformApi = {
   audit: (limit = 200) => request<{ entries: CaseDetail["auditLog"]; total: number }>(`/api/platform/audit-log?limit=${limit}`),
   signup: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/signup", json(body)),
   requestRecovery: (body: Record<string, unknown>) => request<{ submitted: boolean; message: string }>("/api/platform/recovery", json(body)),
+  fraudReports: () => request<{ reports: FraudReport[]; total: number; overview: FraudAbuseOverviewRow[] }>("/api/platform/fraud-reports"),
 };
 
 export type AppNotification = { id: string; caseId: string | null; type: "case_status_changed" | "case_note_added" | "wage_flagged" | "scheme_matched" | "case_assigned" | "case_reopened" | "alert_escalated"; priority: "normal" | "high"; title: string; body: string; meta: Record<string, unknown>; readAt: string | null; createdAt: string };
