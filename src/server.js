@@ -2981,7 +2981,11 @@ const server = http.createServer(async (req, res) => {
     for (const [locale, entry] of Object.entries(page.locales)) {
       if (entry?.body) locales[locale] = { body: entry.body, publishedAt: entry.publishedAt, publishedBy: entry.publishedBy };
     }
-    jsonResponse(res, 200, { slug: page.slug, kind: page.kind, title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug, locales });
+    // Phase 35: review status lets the UI drop the DRAFT banner once a
+    // lawyer has approved exactly the version being served.
+    const review = legalReview.get(slug) || null;
+    const reviewed = Boolean(review && page.locales.en?.publishedAt && review.version === page.locales.en.publishedAt);
+    jsonResponse(res, 200, { slug: page.slug, kind: page.kind, title: contentSlugs.find((entry) => entry.slug === page.slug)?.title || page.slug, review: reviewed ? { reviewedBy: review.reviewedBy, reviewedAt: review.reviewedAt } : null, locales });
     return;
   }
 
