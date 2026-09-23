@@ -26,3 +26,7 @@
 .notif-settings{display:grid;gap:8px;padding:10px;background:#f6faf8;border:1px solid #e2ece8;border-radius:10px}
 .notif-settings label{display:flex;gap:8px;align-items:center;font-weight:600;color:#48616a;font-size:14px}
 .notif-push-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px;font-weight:700;color:#0d4054;font-size:14px}
+.fraud-badge{background:#fdeaea;color:#8f2f2f}
+.fraud-review-card{background:#fdf3f2;border-color:#efc4bf}
+.fraud-review-card small{color:#7a4a44;display:block;margin-top:4px}
+.fraud-review-card .ai-actions input{padding:10px;border:1px solid #dcb3ad;border-radius:8px;font:inherit}
