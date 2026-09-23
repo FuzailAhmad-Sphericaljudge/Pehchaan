@@ -214,9 +214,9 @@ export type PlatformOverview = { generatedAt: string; aggregateOnly: boolean; or
 export type PlatformSummary = { generatedAt: string; organizations: { total: number; ngos: number; employers: number; active: number; deactivated: number }; queue: { pending: number; pendingNgos: number; pendingEmployers: number }; cases: { total: number; open: number; resolved: number }; workers: { total: number }; recoveryRequests: number; referenceData: { minimumWageRates: number; welfareSchemes: number }; fraud: { totalReports: number; accountsWithReports: number; flaggedCases: number; pendingReview: number } };
 
 export type ContentPageEntry = { body: string; publishedAt: string; publishedBy: string };
-export type ContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry> };
+export type ContentPage = { slug: string; kind: "legal" | "static"; title: string; review?: { reviewedBy: string; reviewedAt: string } | null; locales: Record<string, ContentPageEntry> };
 export type ContentDraft = { body: string; savedAt: string; savedBy: string };
-export type PlatformContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry>; drafts: Record<string, ContentDraft>; staleLocales: string[]; publishedLocales: string[]; versionCount: number; updatedAt: string | null; updatedBy: string | null };
+export type PlatformContentPage = { slug: string; kind: "legal" | "static"; title: string; locales: Record<string, ContentPageEntry>; drafts: Record<string, ContentDraft>; staleLocales: string[]; publishedLocales: string[]; versionCount: number; updatedAt: string | null; updatedBy: string | null; review: { reviewedBy: string; reviewedAt: string } | null };
 export type ContentVersion = { id: string; slug: string; kind: "legal" | "static"; locale: string; body: string; publishedBy: string; note: string; createdAt: string };
 
 export const contentApi = {
@@ -231,6 +231,8 @@ export const contentApi = {
   restore: (slug: string, versionId: string) => request<{ page: PlatformContentPage; version: ContentVersion }>(`/api/platform/content/${encodeURIComponent(slug)}/restore`, json({ versionId })),
 
   discardDraft: (slug: string, locale: string) => request<{ slug: string; locale: string }>(`/api/platform/content/${encodeURIComponent(slug)}/${encodeURIComponent(locale)}/draft`, { method: "DELETE" }),
+
+  recordReview: (slug: string, reviewedBy: string) => request<{ slug: string; review: { reviewedBy: string; reviewedAt: string; version: string } }>(`/api/platform/content/${encodeURIComponent(slug)}/review`, json({ reviewedBy })),
 };
 
 export const platformApi = {
