@@ -1288,6 +1288,12 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const phone = whatsappPhone(body.phoneNumber || body.phone || body.MSISDN);
       const text = String(body.text || '').trim();
+      // Phase 33: USSD sessions are cheap to automate; cap sessions per phone
+      // per day. Generous for any genuine user, hostile to dialing scripts.
+      if (!hitRateLimit(`ussd-session:${phone}`, 60, 24 * 60 * 60 * 1000)) {
+        smsReply(res, 'END Service limit reached today. Please try again tomorrow.');
+        return;
+      }
       const worker = ensureWorker(phone);
       const language = worker.language === 'en' ? 'en' : 'hi';
       const menu = language === 'en' ? 'CON Pehchaan\\n1 Safe\\n2 Need help\\n3 Case status\\n4 NGO helpline' : 'CON पहचान\\n1 सुरक्षित\\n2 मदद चाहिए\\n3 मामले की स्थिति\\n4 NGO हेल्पलाइन';
