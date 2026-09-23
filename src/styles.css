@@ -39,3 +39,7 @@
 .cms-versions{margin-top:10px;display:grid;gap:8px}
 .cms-versions .timeline-item{display:flex;gap:10px;align-items:center;justify-content:space-between;background:#f6faf8;border:1px solid #e2ece8;border-radius:10px;padding:8px 10px}
 .cms-versions .timeline-item span{color:#48616a;font-size:13px}
+.faq-section{margin-top:26px;text-align:left}
+.footer-links{display:flex;gap:14px;margin-top:10px}
+.footer-links a{color:#e8f4ef;font-size:13px;text-decoration:underline}
+.footer-links a:hover{color:#ffffff}
