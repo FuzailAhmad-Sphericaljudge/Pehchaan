@@ -772,11 +772,11 @@ function PlatformContentEditor() {
     <p className="helper">Edit the text-heavy pages — Privacy Policy, Terms of Use, FAQ, mission text — without a code deploy. Every publish stores a version; legal pages keep their full history. Languages that have not been updated since the most recent publish are marked stale.</p>
     <div className="detail-grid cms-grid">
       <div className="list-panel cms-list">
-        {pages.map((item) => <button className={item.slug === selected?.slug ? "filter active" : "filter"} onClick={() => setSelected({ slug: item.slug, locale: item.publishedLocales[0] || locales[0] })} key={item.slug}>{item.title}{item.kind === "legal" ? " ⚖" : ""}{item.staleLocales.length ? <small> · {item.staleLocales.length} stale</small> : ""}{item.versionCount ? <small> · {item.versionCount} versions</small> : ""}{Object.keys(item.drafts).length ? " ✎" : ""}</button>)}
+        {pages.map((item) => <button className={item.slug === selected?.slug ? "filter active" : "filter"} onClick={() => { if (dirty && !window.confirm("Discard unsaved changes to this draft?")) return; setSelected({ slug: item.slug, locale: item.publishedLocales[0] || locales[0] }); }} key={item.slug}>{item.title}{item.kind === "legal" ? " ⚖" : ""}{item.staleLocales.length ? <small> · {item.staleLocales.length} stale</small> : ""}{item.versionCount ? <small> · {item.versionCount} versions</small> : ""}{Object.keys(item.drafts).length ? " ✎" : ""}</button>)}
       </div>
       {page && selected && <div className="list-panel cms-editor">
         <h2>{page.title}</h2>
-        <div className="filter-row">{locales.map((locale) => <button className={locale === selected.locale ? "filter active" : "filter"} onClick={() => setSelected({ ...selected, locale })} key={locale}>{localeNames[locale] || locale}{page.staleLocales.includes(locale) ? " ⚠" : ""}{page.drafts[locale] ? " ✎" : ""}{page.locales[locale]?.body ? "" : " ·"}</button>)}</div>
+        <div className="filter-row">{locales.map((locale) => <button className={locale === selected.locale ? "filter active" : "filter"} onClick={() => { if (locale !== selected.locale && dirty && !window.confirm("Discard unsaved changes to this draft?")) return; setSelected({ ...selected, locale }); }} key={locale}>{localeNames[locale] || locale}{page.staleLocales.includes(locale) ? " ⚠" : ""}{page.drafts[locale] ? " ✎" : ""}{page.locales[locale]?.body ? "" : " ·"}</button>)}</div>
         {page.staleLocales.includes(selected.locale) && <p className="helper">⚠ This language has not been updated since the latest publish. Please update it so no language is left behind.</p>}
         {preview
           ? <div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(body) }} />
