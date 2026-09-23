@@ -950,6 +950,18 @@ function newContentVersion({ slug, kind, locale, body, publishedBy, note }) {
   };
 }
 
+// Phase 34: a locale is stale when its last publish predates the most
+// recent publish anywhere on the page. Shared by the list and publish
+// handlers so both report the same set to the admin.
+function contentStaleLocales(page, activeLocale = null) {
+  const times = Object.entries(page.locales)
+    .filter(([, entry]) => entry?.body)
+    .map(([locale, entry]) => [locale, new Date(entry.publishedAt || 0).getTime()]);
+  if (!times.length) return [];
+  const newest = Math.max(...times.map(([, at]) => at));
+  return times.filter(([locale, at]) => locale !== activeLocale && newest - at > 60 * 1000).map(([locale]) => locale);
+}
+
 function serializeContentPage(item) {
   return {
     slug: item.slug,
@@ -2961,10 +2973,7 @@ const server = http.createServer(async (req, res) => {
     const pages = Array.from(contentPages.values()).map((page) => {
       const publishedLocales = Object.entries(page.locales).filter(([, entry]) => entry?.body).map(([locale]) => locale);
       const lastPublishedAt = Math.max(0, ...Object.values(page.locales).map((entry) => entry?.publishedAt ? new Date(entry.publishedAt).getTime() : 0));
-      const staleLocales = publishedLocales.filter((locale) => {
-        const at = page.locales[locale]?.publishedAt ? new Date(page.locales[locale].publishedAt).getTime() : 0;
-        return lastPublishedAt - at > 60 * 1000;
-      });
+      const staleLocales = contentStaleLocales(page);
       const versionCount = contentVersions.filter((item) => item.slug === page.slug).length;
       return { ...serializeContentPage(page), drafts: page.drafts || {}, staleLocales, publishedLocales, versionCount };
     });
@@ -3028,9 +3037,7 @@ const server = http.createServer(async (req, res) => {
     persist();
     // Phase 35: name the locales that just went stale so the admin is
     // explicitly prompted to update the other languages, not left to notice.
-    const staleLocales = Object.entries(page.locales)
-      .filter(([entryLocale, entry]) => entryLocale !== locale && entry?.body)
-      .map(([entryLocale]) => entryLocale);
+    const staleLocales = contentStaleLocales(page, locale);
     jsonResponse(res, 200, { page: serializeContentPage(page), version: serializeContentVersion(version), staleLocales });
     return;
   }
