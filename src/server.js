@@ -39,6 +39,8 @@ const notificationPreferences = new Map();
 const pushSubscriptions = new Map();
 const notificationQueue = [];
 let notificationTimer = null;
+const fraudReports = [];
+const fraudScreens = [];
 
 const legalDisclaimer = 'This document was prepared with Pehchaan to help organize information. It is not a substitute for legal advice.';
 const whatsappSessions = new Map();
@@ -60,7 +62,7 @@ const maxTrustedContacts = 5;
 
 function persist() {
   if (!stateLoaded || !databaseConfigured()) return;
-  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()) })
+  void saveState({ workers, wageEntries, checkIns, cases, caseNotes, evidenceItems, alerts, auditLog, otpChallenges, sessions, revokedAccounts, worksites: Array.from(worksites.values()), legalDocuments: Array.from(legalDocuments.values()), minimumWages: Array.from(minimumWages.values()), welfareSchemes: Array.from(welfareSchemes.values()), workRelationships: Array.from(workRelationships.values()), trustedContacts: Array.from(trustedContacts.values()), platformApplications: Array.from(platformApplications.values()), accountRecovery: Array.from(accountRecovery.values()), notifications: notifications.slice(0, 2000), notificationPreferences: Array.from(notificationPreferences.values()), pushSubscriptions: Array.from(pushSubscriptions.values()), fraudReports: fraudReports.slice(0, 2000) })
     .catch((error) => console.error('Database persistence failed:', error.message));
 }
 
@@ -132,6 +134,12 @@ function createNotification({ audienceRole = 'worker', workerId = null, caseId =
   scheduleNotificationFlush();
   persist();
   return notification;
+}
+
+// NGO-staff notifications are work items for the whole caseworker pool; they
+// go through the same Phase 32 queue (safety alerts keep their direct path).
+function notifyNgoCaseworkers({ caseId = null, type, title, body, meta = {} }) {
+  return createNotification({ audienceRole: 'ngo', workerId: null, caseId, type, title, body, meta });
 }
 
 function scheduleNotificationFlush() {
