@@ -598,7 +598,7 @@ function PlatformApprovals() {
   const reject = (item: import("./api").PlatformApplication) => { const reason = window.prompt(`Reason for rejecting ${item.organizationName} (shared with the applicant):`); if (reason) void decide(item, { decision: "reject", reason }, "Application rejected."); };
   return <>
     <h1>Approval queue</h1>
-    <p className="helper">New NGO and employer sign-ups wait here before they can access any worker data. Approving an employer provisions a verified worksite QR seed; approved organizations still receive their credentials out of band.</p>
+    <p className="helper">New NGO and employer sign-ups wait here before they can access any worker data. Every application must carry a registration number or official domain — the server rejects approvals without one. Approving an employer provisions a verified worksite QR seed; approved organizations still receive their credentials out of band.</p>
     <div className="filter-row">{[["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"], ["deactivated", "Deactivated"]].map(([value, label]) => <button className={filter === value ? "filter active" : "filter"} onClick={() => setFilter(value as typeof filter)} key={value}>{label}</button>)}</div>
     {message && <p className="success">{message}</p>}
     {error && <div className="error-box"><p>{error}</p></div>}
