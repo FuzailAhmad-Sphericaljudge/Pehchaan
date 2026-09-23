@@ -3024,7 +3024,12 @@ const server = http.createServer(async (req, res) => {
     contentVersions.unshift(version);
     makeAudit('content_published', actor.sub, slug, { locale, versionId: version.id, kind: page.kind, characters: sourceBody.length });
     persist();
-    jsonResponse(res, 200, { page: serializeContentPage(page), version: serializeContentVersion(version) });
+    // Phase 35: name the locales that just went stale so the admin is
+    // explicitly prompted to update the other languages, not left to notice.
+    const staleLocales = Object.entries(page.locales)
+      .filter(([entryLocale, entry]) => entryLocale !== locale && entry?.body)
+      .map(([entryLocale]) => entryLocale);
+    jsonResponse(res, 200, { page: serializeContentPage(page), version: serializeContentVersion(version), staleLocales });
     return;
   }
 
