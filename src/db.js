@@ -17,7 +17,7 @@ async function query(text, values = []) {
 
 export async function loadState() {
   if (!pool) return null;
-  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions, fraudReports] = await Promise.all([
+  const [workers, profiles, wages, checkins, cases, notes, evidence, alerts, audits, otp, sessions, revoked, worksites, legalDocuments, minimumWages, welfareSchemes, workRelationships, trustedContacts, platformApplications, accountRecovery, notifications, notificationPrefs, pushSubscriptions, fraudReports, contentPages, contentVersions] = await Promise.all([
     query('SELECT * FROM workers'),
     query('SELECT * FROM profiles'),
     query('SELECT * FROM wage_entries'),
@@ -42,8 +42,10 @@ export async function loadState() {
     query('SELECT * FROM notification_preferences'),
     query('SELECT * FROM push_subscriptions'),
     query('SELECT * FROM fraud_reports ORDER BY created_at DESC'),
+    query('SELECT * FROM content_pages'),
+    query('SELECT * FROM content_versions ORDER BY created_at DESC LIMIT 1000'),
   ]);
-  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows, fraudReports: fraudReports.rows };
+  return { workers: workers.rows, profiles: profiles.rows, wages: wages.rows, checkins: checkins.rows, cases: cases.rows, notes: notes.rows, evidence: evidence.rows, alerts: alerts.rows, audits: audits.rows, otp: otp.rows, sessions: sessions.rows, revoked: revoked.rows, worksites: worksites.rows, legalDocuments: legalDocuments.rows, minimumWages: minimumWages.rows, welfareSchemes: welfareSchemes.rows, workRelationships: workRelationships.rows, trustedContacts: trustedContacts.rows, platformApplications: platformApplications.rows, accountRecovery: accountRecovery.rows, notifications: notifications.rows, notificationPreferences: notificationPrefs.rows, pushSubscriptions: pushSubscriptions.rows, fraudReports: fraudReports.rows, contentPages: contentPages.rows, contentVersions: contentVersions.rows };
 }
 
 export async function saveState(state) {
@@ -179,6 +181,18 @@ export async function saveState(state) {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT (id) DO UPDATE SET reviewed_by=$7,reviewed_at=$8`,
         [item.id, item.caseId, item.workerId, item.reason, item.detail || '', item.reportedBy, item.reviewedBy, item.reviewedAt, item.createdAt]);
+    }
+    for (const item of state.contentPages || []) {
+      await client.query(`INSERT INTO content_pages (slug, kind, locales, drafts, updated_at, updated_by)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (slug) DO UPDATE SET kind=$2,locales=$3,drafts=$4,updated_at=$5,updated_by=$6`,
+        [item.slug, item.kind || 'static', item.locales || {}, item.drafts || {}, item.updatedAt || null, item.updatedBy || null]);
+    }
+    for (const item of state.contentVersions || []) {
+      await client.query(`INSERT INTO content_versions (id, slug, kind, locale, body, published_by, note, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (id) DO NOTHING`,
+        [item.id, item.slug, item.kind || 'static', item.locale, item.body, item.publishedBy, item.note || '', item.createdAt]);
     }
     await client.query('COMMIT');
   } catch (error) {
