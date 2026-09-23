@@ -442,9 +442,14 @@ function JoinPilot({ lang }: { lang: Language }) {
 
 function ContentIndexPage({ lang }: { lang: Language }) {
   const [pages, setPages] = React.useState<{ slug: string; kind: "legal" | "static"; title: string; locales: string[]; lastPublishedAt: string | null }[] | null>(null);
+  const [faqBody, setFaqBody] = React.useState<string | null>(null);
   const [error, setError] = React.useState(false);
-  React.useEffect(() => { contentApi.index().then((result) => setPages(result.pages)).catch(() => setError(true)); }, []);
-  return <main className="page-hero"><p className="eyebrow">{lang === "hi" ? "जानकारी" : "Information"}</p><h1>{lang === "hi" ? "सामान्य प्रश्न और नीतियाँ" : "FAQ & policies"}</h1>{error ? <div className="error-box"><p>{lang === "hi" ? "जानकारी लोड नहीं हो सकी।" : "Could not load the page list."}</p></div> : !pages ? <Loading lang={lang} /> : <div className="list-panel">{pages.map((page) => <Link className="list-row" to={`/${page.slug}`} key={page.slug}><div><strong>{page.title}</strong><span>{page.kind === "legal" ? (lang === "hi" ? "कानूनी दस्तावेज़" : "Legal document") : lang === "hi" ? "जानकारी" : "Information"}{page.lastPublishedAt ? ` · ${lang === "hi" ? "अंतिम अपडेट" : "updated"} ${new Date(page.lastPublishedAt).toLocaleDateString(lang === "hi" ? "hi-IN" : "en-IN")}` : ""}</span></div></Link>)}{!pages.length && <p>{lang === "hi" ? "अभी कोई पेज प्रकाशित नहीं है।" : "No pages published yet."}</p>}</div>}</main>;
+  React.useEffect(() => {
+    contentApi.index().then((result) => setPages(result.pages)).catch(() => setError(true));
+    contentApi.page("faq").then((page) => setFaqBody(page.locales[lang]?.body || page.locales.en?.body || null)).catch(() => setFaqBody(null));
+  }, [lang]);
+  const others = (pages || []).filter((page) => page.slug !== "faq");
+  return <main className="page-hero"><p className="eyebrow">{lang === "hi" ? "जानकारी" : "Information"}</p><h1>{lang === "hi" ? "सामान्य प्रश्न और नीतियाँ" : "FAQ & policies"}</h1>{error ? <div className="error-box"><p>{lang === "hi" ? "जानकारी लोड नहीं हो सकी।" : "Could not load the page list."}</p></div> : !pages ? <Loading lang={lang} /> : <>{faqBody && <div className="cms-preview" dangerouslySetInnerHTML={{ __html: tinyMarkdown(faqBody) }} />}{others.length ? <div className="list-panel">{others.map((page) => <Link className="list-row" to={`/${page.slug}`} key={page.slug}><div><strong>{page.title}</strong><span>{page.kind === "legal" ? (lang === "hi" ? "कानूनी दस्तावेज़" : "Legal document") : lang === "hi" ? "जानकारी" : "Information"}{page.lastPublishedAt ? ` · ${lang === "hi" ? "अंतिम अपडेट" : "updated"} ${new Date(page.lastPublishedAt).toLocaleDateString(lang === "hi" ? "hi-IN" : "en-IN")}` : ""}</span></div></Link>)}</div> : null}</>}</main>;
 }
 
 function CmsFaqSection({ lang }: { lang: Language }) {
