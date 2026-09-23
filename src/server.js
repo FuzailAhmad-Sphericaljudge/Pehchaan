@@ -2806,6 +2806,9 @@ const server = http.createServer(async (req, res) => {
     const sourceBody = text || draft?.body || '';
     if (!sourceBody) { jsonResponse(res, 400, { error: 'Nothing to publish — save or send a body first.' }); return; }
     if (!page) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
+    // Phase 34: publishing a draft clears it; publishing the same body that
+    // is already live is rejected as a no-op instead of polluting history.
+    if (page.locales[locale]?.body === sourceBody) { jsonResponse(res, 409, { error: 'This body is already published.' }); return; }
     const now = new Date().toISOString();
     page.locales[locale] = { body: sourceBody, publishedAt: now, publishedBy: actor.sub };
     delete page.drafts[locale];
