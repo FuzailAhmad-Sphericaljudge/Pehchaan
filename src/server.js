@@ -2635,6 +2635,11 @@ const server = http.createServer(async (req, res) => {
       'POST|GET /api/platform/recovery',
       'POST /api/platform/recovery/resolve',
       'GET /api/platform/audit-log',
+      'GET /api/notifications/vapid-public-key',
+      'GET /api/notifications',
+      'POST /api/notifications/read',
+      'GET|PATCH /api/notifications/preferences',
+      'POST /api/notifications/push-subscribe',
       'POST /api/admin/revoke-account',
     ],
   });
@@ -2672,6 +2677,9 @@ async function start() {
     for (const row of state.trustedContacts || []) trustedContacts.set(row.id, { id: row.id, workerId: row.worker_id, name: row.name, phone: row.phone, relationshipLabel: row.relationship_label, status: row.status, confirmedAt: row.confirmed_at ? new Date(row.confirmed_at).toISOString() : null, lastTestSentAt: row.last_test_sent_at ? new Date(row.last_test_sent_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.platformApplications || []) platformApplications.set(row.id, { id: row.id, kind: row.kind, organizationName: row.organization_name, contactName: row.contact_name, contactEmail: row.contact_email, contactPhone: row.contact_phone, notes: row.notes, status: row.status, rejectionReason: row.rejection_reason, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.accountRecovery || []) accountRecovery.set(row.id, { id: row.id, applicationId: row.application_id, contactEmail: row.contact_email, reason: row.reason, status: row.status, resolutionNote: row.resolution_note, requestedBy: row.requested_by, resolvedBy: row.resolved_by, resolvedAt: row.resolved_at ? new Date(row.resolved_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.notifications || []) notifications.push({ id: row.id, audienceRole: row.audience_role, workerId: row.worker_id, caseId: row.case_id, type: row.type, priority: row.priority, title: row.title, body: row.body, meta: row.meta || {}, readAt: row.read_at ? new Date(row.read_at).toISOString() : null, deliveredPushAt: row.delivered_push_at ? new Date(row.delivered_push_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
+    for (const row of state.notificationPreferences || []) notificationPreferences.set(row.worker_id, { caseUpdates: row.case_updates, caseNotes: row.case_notes, wageFlags: row.wage_flags, schemeMatches: row.scheme_matches });
+    for (const row of state.pushSubscriptions || []) pushSubscriptions.set(row.id, { id: row.id, audienceRole: row.audience_role, workerId: row.worker_id, endpoint: row.endpoint, p256dh: row.p256dh, auth: row.auth, createdAt: new Date(row.created_at).toISOString() });
   }
   stateLoaded = true;
   server.listen(PORT, () => {
