@@ -67,7 +67,7 @@ export type Dashboard = {
 };
 export type WelfareScheme = { id: string; slug: string; name: string; description: string; eligibility: string; registrationInstructions: string; officialUrl?: string | null; languages?: Record<string, { name?: string; description?: string; eligibility?: string; registrationInstructions?: string }>; states?: string[]; workerCategories?: string[]; minAge?: number | null; maxAge?: number | null; active?: boolean; updatedAt?: string; };
 
-export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string };
+export type NgoCase = WorkerCase & { workerId: string; owner: string | null; updatedAt: string; fraudReview?: FraudReview | null };
 export type Evidence = { id: string; fileName: string; type: string; mimeType?: string; sizeBytes?: number; checksum?: string | null; scanStatus?: string; available?: boolean; createdAt: string };
 export type CaseDetail = { case: NgoCase; notes: { id: string; author: string; text: string; createdAt: string }[]; evidence: Evidence[]; auditLog: { id: string; action: string; actor: string; timestamp: string; details: Record<string, unknown> }[]; aiSummary?: string };
 
