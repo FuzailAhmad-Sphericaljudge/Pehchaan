@@ -579,6 +579,131 @@ function checkRateLimit(key, limit, windowMs) {
   return true;
 }
 
+// ---- Phase 33: anti bulk/bot sign-up limits -------------------------------
+// Phase 8 limits stop brute force; these are tuned against bulk sign-up
+// campaigns (many accounts from one IP, OTP farming, complaint flooding).
+function clientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || req.socket.remoteAddress || 'unknown';
+}
+
+function hitRateLimit(key, limit, windowMs) {
+  const allowed = checkRateLimit(key, limit, windowMs);
+  if (!allowed) {
+    makeAudit('abuse_limit_triggered', 'system', key, { limit, windowMs });
+  }
+  return allowed;
+}
+
+// ---- Phase 33: Fraud & Abuse Prevention -----------------------------------
+// Design rule for this whole section: signals flag for human review, they never
+// auto-reject. A real worker with a slow connection or a genuine duplicate
+// report must never be silently blocked — caseworkers see the flag and decide.
+
+// Lightweight normalization so "URGENT help me" and "urgent   help me" match.
+function complaintFingerprint(text) {
+  return String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+}
+
+function spamSignalsIn(text) {
+  const signals = [];
+  const normalized = complaintFingerprint(text);
+  if (!normalized) return signals;
+  if (normalized.length < 12) signals.push('very_short_text');
+  if (/(https?:\/\/|www\.)\S+/.test(normalized)) signals.push('contains_link');
+  if (/(\d)\1{6,}/.test(normalized)) signals.push('repeated_digits');
+  if (/(.)\1{9,}/.test(normalized)) signals.push('repeated_characters');
+  if (/\b(earn|income|cash|loan|kyc|otp|winner|lottery|refund|crypto|bet)\b/i.test(normalized)) signals.push('promo_terms');
+  return signals;
+}
+
+// Flags a case for review in-place. Never blocks, never closes, never hides.
+// Every complaint is recorded after screening so a LATER complaint from the
+// same network can be compared against it — not just ones already flagged.
+// Entries are pushed in time order, so old ones prune from the front.
+function recordFraudScreenSeen(ip, text) {
+  const now = Date.now();
+  while (fraudScreens.length && now - fraudScreens[0].at > 24 * 60 * 60 * 1000) fraudScreens.shift();
+  fraudScreens.push({ ip, fingerprint: complaintFingerprint(text), at: now });
+}
+
+function applyFraudScreening(newCase, { ip } = {}) {
+  const signals = [];
+  const fingerprint = complaintFingerprint(newCase.summary);
+  const now = Date.now();
+  // Exclude the new case itself: callers push it into `cases` before screening,
+  // so without this guard every complaint would be flagged as a duplicate of
+  // itself and the flag would be meaningless noise for caseworkers.
+  const recentByWorker = cases.filter((item) => item.id !== newCase.id
+    && item.workerId === newCase.workerId
+    && complaintFingerprint(item.summary) === fingerprint
+    && now - new Date(item.createdAt).getTime() <= 60 * 60 * 1000);
+  if (recentByWorker.length >= 1) signals.push(`duplicate_recent_same_account:${recentByWorker[0].id}`);
+  const recentByIp = ip
+    ? fraudScreens.filter((item) => item.ip === ip && item.fingerprint === fingerprint && now - item.at <= 60 * 60 * 1000)
+    : [];
+  if (ip && !recentByWorker.length && recentByIp.length >= 1) signals.push('duplicate_recent_same_ip');
+  const spam = spamSignalsIn(newCase.summary);
+  if (spam.length) signals.push(`spam_patterns:${spam.join(',')}`);
+  const dayAgo = now - 24 * 60 * 60 * 1000;
+  const lastDayByWorker = cases.filter((item) => item.id !== newCase.id && item.workerId === newCase.workerId && new Date(item.createdAt).getTime() >= dayAgo).length;
+  if (lastDayByWorker >= 5) signals.push(`high_volume_same_account:${lastDayByWorker}in24h`);
+  if (signals.length) {
+    newCase.fraudReview = {
+      flagged: true,
+      signals,
+      screenedAt: new Date().toISOString(),
+      screenedBy: 'rules-v1',
+      disposition: null,
+      reviewedBy: null,
+      reviewedAt: null,
+    };
+  }
+  return newCase.fraudReview || null;
+}
+
+const fraudReasons = ['spam', 'duplicate', 'false_complaint', 'harassment', 'other'];
+
+function serializeFraudReport(item) {
+  return {
+    id: item.id,
+    caseId: item.caseId,
+    workerId: item.workerId || null,
+    reason: item.reason,
+    detail: item.detail || '',
+    reportedBy: item.reportedBy,
+    reviewedBy: item.reviewedBy || null,
+    reviewedAt: item.reviewedAt || null,
+    createdAt: item.createdAt,
+  };
+}
+
+// Platform-admin aggregate view of abuse patterns per account. Counts only —
+// no case content, consistent with the platform panel's aggregate-only rule.
+function fraudAbuseOverview() {
+  const byWorker = new Map();
+  for (const report of fraudReports) {
+    if (!report.workerId) continue;
+    const entry = byWorker.get(report.workerId) || { workerId: report.workerId, fraudReports: 0, reasons: {}, flaggedCases: 0, dismissedByCaseworker: 0, lastActivityAt: null };
+    entry.fraudReports += 1;
+    entry.reasons[report.reason] = (entry.reasons[report.reason] || 0) + 1;
+    const reported = new Date(report.createdAt).getTime();
+    if (!entry.lastActivityAt || reported > new Date(entry.lastActivityAt).getTime()) entry.lastActivityAt = report.createdAt;
+    byWorker.set(report.workerId, entry);
+  }
+  for (const item of cases) {
+    if (!item.fraudReview?.flagged) continue;
+    const entry = byWorker.get(item.workerId) || { workerId: item.workerId, fraudReports: 0, reasons: {}, flaggedCases: 0, dismissedByCaseworker: 0, lastActivityAt: null };
+    entry.flaggedCases += 1;
+    if (item.fraudReview.disposition === 'dismissed') entry.dismissedByCaseworker += 1;
+    const at = item.fraudReview.reviewedAt || item.fraudReview.screenedAt || item.createdAt;
+    if (!entry.lastActivityAt || new Date(at) > new Date(entry.lastActivityAt)) entry.lastActivityAt = at;
+    byWorker.set(item.workerId, entry);
+  }
+  return Array.from(byWorker.values())
+    .sort((a, b) => (b.fraudReports + b.flaggedCases) - (a.fraudReports + a.flaggedCases));
+}
+
 function serializeApplication(item) {
   return {
     id: item.id,
