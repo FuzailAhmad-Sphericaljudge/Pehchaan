@@ -3067,7 +3067,7 @@ const server = http.createServer(async (req, res) => {
     const slug = decodeURIComponent(pathname.split('/')[4]);
     const page = contentPages.get(slug);
     if (!page) { jsonResponse(res, 404, { error: 'Unknown content page.' }); return; }
-    jsonResponse(res, 200, { slug, kind: page.kind, versions: contentAuditTrail(slug).map(serializeContentVersion) });
+    jsonResponse(res, 200, { slug, kind: page.kind, versions: contentAuditTrail(slug).slice(0, 100).map(serializeContentVersion) });
     return;
   }
 
