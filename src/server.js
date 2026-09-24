@@ -9,6 +9,7 @@ import { closeDatabase, databaseConfigured, loadState, saveState } from './db.js
 
 const PORT = Number(process.env.PORT || 5000);
 const publicDir = path.resolve(process.cwd(), 'public');
+const distDir = path.resolve(process.cwd(), 'dist');
 const isProduction = process.env.NODE_ENV === 'production';
 const allowDemoOtp = !isProduction && process.env.ALLOW_DEMO_OTP !== 'false';
 const otpTtlMs = 10 * 60 * 1000;
@@ -1198,33 +1199,49 @@ function ensureWorker(phone) {
   return worker;
 }
 
-function serveStaticFile(res, filePath) {
-  const normalized = path.normalize(filePath);
-  const resolvedPath = path.resolve(publicDir, normalized);
-
-  if (!resolvedPath.startsWith(publicDir)) {
-    jsonResponse(res, 403, { error: 'Forbidden' });
-    return;
-  }
-
-  fs.readFile(resolvedPath, (error, data) => {
-    if (error) {
+function serveStaticFile(res, relativePath, fallbackToIndex = false) {
+  const normalized = path.normalize(relativePath);
+  const roots = [distDir, publicDir];
+  const contentTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+    '.webmanifest': 'application/manifest+json',
+  };
+  let rootIndex = 0;
+  const tryNextRoot = () => {
+    if (rootIndex >= roots.length) {
+      const distIndex = path.join(distDir, 'index.html');
+      if (fallbackToIndex && fs.existsSync(distIndex)) {
+        fs.readFile(distIndex, (error, data) => {
+          if (error) { jsonResponse(res, 404, { error: 'File not found.' }); return; }
+          res.writeHead(200, { 'Content-Type': contentTypes['.html'] });
+          res.end(data);
+        });
+        return;
+      }
       jsonResponse(res, 404, { error: 'File not found.' });
       return;
     }
-
-    const ext = path.extname(resolvedPath).toLowerCase();
-    const contentTypes = {
-      '.html': 'text/html; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.js': 'application/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.svg': 'image/svg+xml',
-    };
-
-    res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream' });
-    res.end(data);
-  });
+    const root = roots[rootIndex++];
+    const resolvedPath = path.resolve(root, normalized);
+    if (!resolvedPath.startsWith(root)) {
+      jsonResponse(res, 403, { error: 'Forbidden' });
+      return;
+    }
+    fs.readFile(resolvedPath, (error, data) => {
+      if (error) { tryNextRoot(); return; }
+      const ext = path.extname(resolvedPath).toLowerCase();
+      res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream' });
+      res.end(data);
+    });
+  };
+  tryNextRoot();
 }
 
 function serializeWageRate(rate) {
@@ -1548,12 +1565,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Frontend: the built React app (dist/), with the legacy public/ shell
+  // as a fallback when dist/ has not been built.
   if (pathname === '/' || pathname === '/index.html') {
-    serveStaticFile(res, 'index.html');
+    serveStaticFile(res, 'index.html', true);
     return;
   }
 
-  if (pathname === '/styles.css' || pathname === '/app.js') {
+  if (pathname.startsWith('/assets/')) {
+    serveStaticFile(res, pathname.slice(1));
+    return;
+  }
+
+  if (['/styles.css', '/app.js', '/manifest.json', '/sw.js', '/favicon.ico'].includes(pathname) || pathname.startsWith('/icon-')) {
     serveStaticFile(res, pathname.slice(1));
     return;
   }
@@ -3477,6 +3501,13 @@ const server = http.createServer(async (req, res) => {
       jsonResponse(res, 200, { revoked: true, accountId });
       return;
     }
+  }
+
+  // SPA fallback — deep links like /ngo or /join serve the app shell so the
+  // frontend works directly from this port.
+  if (req.method === 'GET' && !pathname.startsWith('/api/') && pathname !== '/health') {
+    serveStaticFile(res, pathname.slice(1), true);
+    return;
   }
 
   jsonResponse(res, 404, {
