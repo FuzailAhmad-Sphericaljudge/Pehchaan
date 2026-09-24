@@ -3573,7 +3573,9 @@ async function start() {
     for (const row of state.fraudReports || []) fraudReports.push({ id: row.id, caseId: row.case_id, workerId: row.worker_id, reason: row.reason, detail: row.detail, reportedBy: row.reported_by, reviewedBy: row.reviewed_by, reviewedAt: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null, createdAt: new Date(row.created_at).toISOString() });
     for (const row of state.cases) { if (row.fraud_review && Object.keys(row.fraud_review).length) { const existing = cases.find((item) => item.id === row.id); if (existing) existing.fraudReview = row.fraud_review; } }
     for (const row of state.contentPages || []) contentPages.set(row.slug, { slug: row.slug, kind: row.kind, locales: row.locales || {}, drafts: row.drafts || {}, updatedAt: row.updatedAt || null, updatedBy: row.updatedBy || null });
-    for (const row of state.contentVersions || []) contentVersions.push({ id: row.id, slug: row.slug, kind: row.kind, locale: row.locale, body: row.body, publishedBy: row.publishedBy, note: row.note || '', createdAt: row.createdAt });
+    // Guard against legacy rows saved before publishedBy existed — a NULL
+    // here violates the content_versions not-null constraint on every save.
+    for (const row of state.contentVersions || []) contentVersions.push({ id: row.id, slug: row.slug, kind: row.kind, locale: row.locale, body: row.body, publishedBy: row.publishedBy || 'unknown', note: row.note || '', createdAt: row.createdAt });
     for (const row of state.legalReviews || []) legalReview.set(row.slug, { reviewedBy: row.reviewed_by, reviewedAt: new Date(row.reviewed_at).toISOString(), version: row.version });
   }
   // Phase 34: fresh installs (and fresh databases) get the current in-app
