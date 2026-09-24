@@ -26,6 +26,7 @@ const auditLog = [];
 const alerts = [];
 const employerWageRecords = [];
 const employerInterest = [];
+const pilotInterests = [];
 const worksites = new Map();
 const legalDocuments = new Map();
 const minimumWages = new Map();
@@ -2566,6 +2567,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public pilot-interest form (marketing site). Messages land in the pilot
+  // team's outreach queue; a light per-IP daily cap keeps bots from flooding it.
+  if (req.method === 'POST' && pathname === '/api/pilot-interest') {
+    if (!hitRateLimit(`pilot-interest-ip:${clientIp(req)}`, 10, 24 * 60 * 60 * 1000)) {
+      jsonResponse(res, 429, { error: 'Too many requests from this network. Please try again tomorrow.' });
+      return;
+    }
+    const body = await parseBody(req);
+    const interest = {
+      id: randomUUID(),
+      name: String(body.name || '').trim(),
+      role: String(body.role || '').trim(),
+      city: String(body.city || '').trim(),
+      contact: String(body.contact || '').trim(),
+      message: String(body.message || '').trim(),
+      createdAt: new Date().toISOString(),
+    };
+    if (!interest.name || !interest.role || !interest.contact) { jsonResponse(res, 400, { error: 'Name, role, and a phone number or email are required.' }); return; }
+    pilotInterests.push(interest);
+    makeAudit('pilot_interest_submitted', 'public', interest.id, { role: interest.role, city: interest.city });
+    jsonResponse(res, 201, { submitted: true });
+    return;
+  }
+
   if (req.method === 'GET' && pathname.startsWith('/api/workers/')) {
     const actor = authenticate(req, res, ['worker']);
     if (!actor) return;
@@ -3499,6 +3524,7 @@ const server = http.createServer(async (req, res) => {
       'GET /api/content/:slug/versions',
       'GET /api/content/:slug/version/:versionId',
       'GET /api/content',
+      'POST /api/pilot-interest',
       'GET|PUT /api/platform/content',
       'POST /api/platform/content/:slug/:locale/publish',
       'DELETE /api/platform/content/:slug/:locale/draft',

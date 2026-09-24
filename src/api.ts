@@ -141,6 +141,11 @@ export const employerApi = {
   createWorksite: (name: string) => request<{ worksite: { id: string; name: string; registrationCode: string; verified: boolean }; qrPayload: string; qrDataUrl: string }>("/api/employer/worksites", json({ name })),
 };
 
+// Public pilot-interest form on the marketing site — no login required.
+export const publicApi = {
+  pilotInterest: (body: Record<string, unknown>) => request<{ submitted: boolean }>("/api/pilot-interest", json(body)),
+};
+
 
 export type ConsentNoticeStatus = { acknowledged: string | null; acknowledgedAt: string | null; notice: { version: string; publishedAt: string; draft: boolean } | null };
 export const workerApi = {
