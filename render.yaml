@@ -11,8 +11,8 @@ services:
     runtime: node
     plan: free
     region: singapore          # closest free region to India; change if you prefer
-    buildCommand: npm ci && npm run build && npm run db:migrate
-    startCommand: npm start
+    buildCommand: npm ci && npm run build
+    startCommand: node scripts/migrate.js && npm start
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION

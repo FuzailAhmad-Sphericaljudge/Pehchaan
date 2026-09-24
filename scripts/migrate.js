@@ -6,7 +6,11 @@ import pg from 'pg';
 const { Pool } = pg;
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
-  throw new Error('DATABASE_URL must be configured before running migrations.');
+  // Building/starting without a database (e.g. first Render deploy before
+  // the Postgres instance is provisioned) must not crash the deploy — the
+  // server boots in-memory and migrations run once DATABASE_URL exists.
+  console.warn('[migrate] DATABASE_URL not set — skipping migrations (in-memory mode).');
+  process.exit(0);
 }
 
 const pool = new Pool({ connectionString: databaseUrl, max: 5 });
