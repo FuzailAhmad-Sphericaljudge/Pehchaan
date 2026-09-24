@@ -23,7 +23,8 @@ After legal review:
 1. Apply the lawyer's corrections to the CMS drafts (Super-Admin → Content).
 2. Publish each locale from the editor (this stores a new version).
 3. Update these files to match and remove the DRAFT banners.
-4. Record the review in `docs/launch-checklist.md` (Phase 37).
+4. Record the review in `docs/launch-checklist.md` (Phase 37) — its Legal
+   section (§1) is the formal go/no-go gate for these documents.
 
 ## Basis for the drafts
 

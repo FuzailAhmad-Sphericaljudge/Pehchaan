@@ -292,3 +292,27 @@ they are treated as final**. The consent gate screen shows the versioned
 notice before a worker's first wage entry, check-in, or complaint, and links
 to the full policy. Publishing one locale names the languages that just went
 stale so an admin is explicitly prompted to update them.
+
+## Onboarding & training materials (Phase 36)
+
+Draft materials for the pilot live in `docs/onboarding/`: a worker onboarding
+walkthrough (EN + HI, visual/low-text, with a printable pocket card), an NGO
+caseworker training guide (case inbox, safety-alert acknowledgement and
+erescation, case-note/status conventions, shadowing sign-off), and a one-page
+"What is Pehchaan" explainer for responsible employers. They are documents,
+not app screens, and each carries a DRAFT — REVIEW BEFORE USE banner: the
+people who will actually run the sessions must adapt and sign them off first.
+
+## QA/UAT and launch checklist (Phase 37)
+
+`docs/uat-test-plan.md` holds the user-acceptance plan: concrete test
+scenarios per role (Worker, NGO Caseworker, NGO Admin, Employer, Platform
+Admin) derived from the features actually built, plus a device/network matrix
+template for real phones and 2G/3G/offline conditions, with Pass/Fail and
+tester columns to fill in as testing happens.
+
+`docs/launch-checklist.md` is the go/no-go checklist the team reviews together
+before public launch: legal-review sign-off (Phase 35), external service
+approvals (WhatsApp Business, SMS gateway, malware scanner, push relay),
+production deployment health (backups, restore drill, migrations, monitoring),
+onboarding readiness (Phase 36), and the product's privacy/safety guardrails.
